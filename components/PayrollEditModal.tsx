@@ -93,7 +93,7 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
               <label className="block text-sm font-medium mb-1" htmlFor="perDayWage">Wage</label>
               <input id="perDayWage" aria-label="Wage" placeholder="Wage" type="number" className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800" name="perDayWage" value={form.perDayWage} onChange={handleChange} />
             </div>
-            {['duties','ot','ph','perDayWage','advance','bus','food','eb','shoes','kancha','lastMonth','cash'].map((k) => (
+            {['duties','ot','ph','perDayWage','advance','bus','food','eb','shoes','karcha','lastMonth','cash'].map((k) => (
               <div key={k}>
                 <label className="block text-sm font-medium mb-1" htmlFor={k}>{k.toUpperCase()}</label>
                 <input id={k} aria-label={k.toUpperCase()} placeholder={k.toUpperCase()} type="number" className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800" name={k} value={(form as any)[k]} onChange={handleChange} />

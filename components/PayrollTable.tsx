@@ -41,7 +41,8 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, onUpdateEmploy
     const column = PAYROLL_COLUMNS.find(c => c.key === key);
     if (column && column.editable) {
       setEditingCell({ rowIndex, key });
-      setEditValue(String(value));
+      // For numeric fields, show empty string if value is 0 to allow easy editing
+      setEditValue(column.isNumeric && value === 0 ? '' : String(value));
     }
   };
 
@@ -54,7 +55,14 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, onUpdateEmploy
     let newValue: string | number = editValue;
 
     if (column?.isNumeric) {
-        newValue = parseFloat(editValue) || 0;
+      // Handle empty string case to allow clearing the field
+      if (editValue === '') {
+        newValue = 0;
+      } else {
+        // Parse the value as a float, but keep it as a string if it ends with a decimal point
+        const parsed = parseFloat(editValue);
+        newValue = isNaN(parsed) ? 0 : parsed;
+      }
     }
 
     if ((employeeToUpdate as any)[key] !== newValue) {
@@ -73,17 +81,38 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, onUpdateEmploy
     }
   };
   
+  // Helper function to get employee status
+  const getEmployeeStatus = (empId: string | number | symbol | undefined | null): string => {
+    if (empId === undefined || empId === null) return 'Active';
+    const empIdStr = String(empId);
+    const employee = employees.find((e: any) => e && String(e.empId) === empIdStr);
+    return employee?.status || 'Active';
+  };
+  
+  // Helper function to safely get employee status from employee object
+  const getStatusForEmployee = (emp: PayrollData): string => {
+    if (!emp) return 'Active';
+    return getEmployeeStatus(emp.empId);
+  };
+
   const formatValue = (key: keyof PayrollData | string, value: any) => {
     if (value === undefined || value === null) return '';
+    
+    // Format currency values
     if (['salary', 'otWages', 'totalSalary', 'netSalary', 'balance', 'advance', 'pf', 'esi', 'tds', 'others', 'bonus', 'cash'].includes(key as string)) {
       const num = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
       return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(num);
     }
+    
+    // Format Mestri name
     if (key === 'mestri') {
       if (typeof value === 'object' && value !== null) return (value as any).name || (value as any).mestriId || '';
       return String(value || '');
     }
+    
+    // Skip formatting for objects
     if (typeof value === 'object') return '';
+    
     return String(value);
   };
 
@@ -123,15 +152,37 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, onUpdateEmploy
                         ref={inputRef}
                         type={col.isNumeric ? 'number' : 'text'}
                         value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
+                        onChange={(e) => {
+                          // Allow empty string for numeric fields to enable backspace
+                          if (col.isNumeric) {
+                            // Only allow numbers, decimal point, and backspace
+                            if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) {
+                              setEditValue(e.target.value);
+                            }
+                          } else {
+                            setEditValue(e.target.value);
+                          }
+                        }}
                         onBlur={handleUpdate}
-                        onKeyDown={handleKeyDown}
+                        onKeyDown={(e) => {
+                          // Allow backspace, delete, tab, escape, enter, and arrow keys
+                          if (col.isNumeric && e.key === 'Backspace' && editValue === '0') {
+                            setEditValue('');
+                            return;
+                          }
+                          handleKeyDown(e);
+                        }}
                         aria-label={`Edit ${String(col.key)}`}
-                        placeholder={`Edit ${String(col.key)}`}
+                        placeholder={col.isNumeric ? '0' : `Edit ${String(col.key)}`}
                         className="w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white outline-none ring-2 ring-cyan-400 rounded px-1 py-0.5"
+                        step={col.isNumeric ? 'any' : undefined}
                       />
                     ) : (
-                      <span>{formatValue(col.key as keyof any, value)}</span>
+                      <span>{
+                        col.key === 'status' 
+                          ? getStatusForEmployee(employee)
+                          : formatValue(col.key as keyof any, value)
+                      }</span>
                     )}
                   </td>
                 );

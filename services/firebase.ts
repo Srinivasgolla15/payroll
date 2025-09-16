@@ -4,6 +4,7 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
   setDoc,
   DocumentReference,
   updateDoc,
@@ -58,17 +59,33 @@ const employeesRefPath = "employees";
 /* --------------------- MESTRIS --------------------- */
 export const getMestris = async (): Promise<Mestri[]> => {
   const snapshot = await getDocs(mestrisRef);
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      mestriId: data.mestriId || doc.id,
-      name: data.name || "",
-      phoneNumber: data.phoneNumber || "",
-      createdAt: toDateString(data.createdAt),
-      updatedAt: toDateString(data.updatedAt),
-    } as Mestri;
-  });
+  return snapshot.docs.map((doc) => mapMestriDoc(doc));
+};
+
+export const getMestriById = async (id: string): Promise<Mestri | null> => {
+  try {
+    const docRef = doc(db, 'mestris', id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return mapMestriDoc(docSnap);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching mestri:', error);
+    return null;
+  }
+};
+
+const mapMestriDoc = (doc: QueryDocumentSnapshot<DocumentData>): Mestri => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    mestriId: data.mestriId || doc.id,
+    name: data.name || "",
+    phoneNumber: data.phoneNumber || "",
+    createdAt: toDateString(data.createdAt),
+    updatedAt: toDateString(data.updatedAt),
+  };
 };
 
 export const addMestri = async (
@@ -168,10 +185,20 @@ export const updateEmployee = async (
 /* --------------------- PAYROLL --------------------- */
 export const getPayrolls = async (
   month: string,
-  mestriId?: string
+  filter?: { mestriId?: string; employeeId?: string }
 ): Promise<PayrollData[]> => {
   let q = query(payrollRef, where("month", "==", month));
-  if (mestriId) q = query(q, where("mestriId", "==", mestriId));
+  
+  // Apply filters if provided
+  if (filter) {
+    if (filter.mestriId) {
+      q = query(q, where("mestriId", "==", filter.mestriId));
+    }
+    if (filter.employeeId) {
+      q = query(q, where("employeeId", "==", filter.employeeId));
+    }
+  }
+  
   const snapshot = await getDocs(q);
 
   return snapshot.docs.map((doc) => {

@@ -18,16 +18,51 @@ const initialState: PayrollState = {
 };
 
 // Async thunk for fetching payrolls
-export const fetchPayrolls = createAsyncThunk<PayrollData[], string>(
+export const fetchPayrolls = createAsyncThunk<PayrollData[], string, { state: RootState }>(
   'payroll/fetchPayrolls',
-  async (month, { rejectWithValue }) => {
+  async (month, { getState, rejectWithValue }) => {
     try {
-      return await getFirebasePayrolls(month);
+      const state = getState() as RootState;
+      // Pass empty filter object to maintain backward compatibility
+      return await getFirebasePayrolls(month, {});
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to fetch payrolls');
     }
   }
 );
+
+// Helper function to update future payrolls when Mestri changes
+const updateFuturePayrolls = async (employeeId: string, mestriId: string, currentMonth: string) => {
+  try {
+    // Get the current date and calculate the next month
+    const [year, month] = currentMonth.split('-').map(Number);
+    const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+    
+    // Get all future payrolls for this employee
+    const futurePayrolls = await getFirebasePayrolls(nextMonth, { employeeId });
+    
+    // Update each future payroll with the new Mestri ID
+    const updates = futurePayrolls.map(payroll => {
+      // Create a new object with the updated Mestri ID
+      const updatedPayroll = { ...payroll };
+      updatedPayroll.mestriId = mestriId;
+      updatedPayroll.updatedAt = new Date().toISOString();
+      
+      // Remove the mestri object to avoid Firestore errors
+      if ('mestri' in updatedPayroll) {
+        delete (updatedPayroll as any).mestri;
+      }
+      
+      return updatedPayroll;
+    });
+    
+    // Save all updated payrolls
+    return await Promise.all(updates.map(saveFirebasePayroll));
+  } catch (error) {
+    console.error('Error updating future payrolls:', error);
+    throw error;
+  }
+};
 
 // Async thunk for updating payroll
 export const updateEmployeePayroll = createAsyncThunk<PayrollData, Partial<PayrollData>>(
@@ -42,6 +77,12 @@ export const updateEmployeePayroll = createAsyncThunk<PayrollData, Partial<Payro
         (p) => p.employeeId === partialData.employeeId
       );
 
+      // Check if Mestri is being changed
+      const isMestriChanging = partialData.mestriId && 
+        existingData?.mestriId && 
+        partialData.mestriId !== existingData.mestriId;
+
+      // Create a new object with the updated data
       const fullData: PayrollData = {
         ...existingData, // Spread existing data first to preserve all fields
         ...partialData,  // Then override with updated values
@@ -92,7 +133,26 @@ export const updateEmployeePayroll = createAsyncThunk<PayrollData, Partial<Payro
         updatedAt: new Date().toISOString(),
         createdAt: partialData.createdAt ?? existingData?.createdAt ?? new Date().toISOString(),
       } as PayrollData;
-      return await saveFirebasePayroll(fullData);
+      
+      // Remove the mestri object to avoid Firestore errors
+      if ('mestri' in fullData) {
+        delete (fullData as any).mestri;
+      }
+      
+      // Save the updated payroll
+      const updatedPayroll = await saveFirebasePayroll(fullData);
+      
+      // If Mestri was changed, update all future payrolls
+      if (isMestriChanging && fullData.employeeId && fullData.mestriId) {
+        try {
+          await updateFuturePayrolls(fullData.employeeId, fullData.mestriId, month);
+        } catch (error) {
+          console.error('Failed to update future payrolls with new Mestri:', error);
+          // Don't fail the main operation if updating future payrolls fails
+        }
+      }
+      
+      return updatedPayroll;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to update payroll');
     }

@@ -1,6 +1,6 @@
-import { PayrollData, PaymentStatus, PaymentMethod, Employee } from '../src/types/firestore';
+import { PayrollData, PaymentStatus, PaymentMethod, Employee, Mestri } from '../src/types/firestore';
 import * as XLSX from 'xlsx';
-import { getPayrolls as getFirebasePayrolls, savePayroll as saveFirebasePayroll } from './firebase';
+import { getPayrolls as getFirebasePayrolls, savePayroll as saveFirebasePayroll, getMestriById } from './firebase';
 
 const OT_MULTIPLIER = 1.5;
 
@@ -49,17 +49,25 @@ export const createDefaultPayroll = (employee: Employee, month: string): Payroll
   const now = new Date().toISOString();
   return {
     id: `${employee.empId}_${month}`,
-    employeeId: employee.id,
-    mestriId: employee.mestriId,
+    employeeId: employee.empId,
+    mestriId: employee.mestriId || '',
     month,
-    name: employee.name,
+    // strong reference fields
+    ...(employee.id ? { employeeDocId: employee.id } : {}),
+    // employee details
+    name: employee.name || '',
     empId: employee.empId,
     dept: (employee as any).dept || 'General',
     designation: (employee as any).designation || 'Worker',
-    joiningDate: employee.joiningDate,
+    joiningDate: employee.joiningDate || now.split('T')[0],
+    // payment details
+    cashOrAccount: PaymentMethod.Cash,
+    paid: false,
+    status: PaymentStatus.Pending,
+    // salary components
     basic: 0,
     dailyWage: 0,
-    perDayWage: (employee as any).perDayWage || 0,
+    perDayWage: Number(employee.perDayWage) || 0,
     duties: 0,
     ot: 0,
     advance: 0,
@@ -79,30 +87,45 @@ export const createDefaultPayroll = (employee: Employee, month: string): Payroll
     others: 0,
     bonus: 0,
     cash: 0,
-    cashOrAccount: PaymentMethod.Cash,
-    paid: false,
-    status: PaymentStatus.Pending,
-    accountNumber: employee.accountNumber,
-    ifsc: employee.ifsc,
-    bankName: '',
-    bankHolderName: employee.bankHolderName,
+    // bank details
+    accountNumber: employee.accountNumber || "",
+    ifsc: employee.ifsc || "",
+    bankName: "",
+    bankHolderName: employee.bankHolderName || "",
+    // calculated fields (will be updated by calculatePayroll)
     totalDuties: 0,
     salary: 0,
     otWages: 0,
     totalSalary: 0,
     netSalary: 0,
     balance: 0,
+    // timestamps
     createdAt: now,
     updatedAt: now,
   };
 };
 
-// Get payrolls for a specific month
-export const getPayrolls = async (month: string): Promise<PayrollData[]> => {
+// Get payrolls for a specific month with optional filtering
+export const getPayrolls = async (month: string, filter: { mestriId?: string; employeeId?: string } = {}): Promise<PayrollData[]> => {
   try {
-    return await getFirebasePayrolls(month);
+    // Get payrolls from Firebase with filters applied at the query level
+    const payrolls = await getFirebasePayrolls(month, filter);
+
+    // Get unique Mestri IDs from payrolls
+    const mestriIds = [...new Set(payrolls.map(p => p.mestriId).filter(Boolean))];
+    
+    // Fetch all Mestri details in a single batch
+    const mestriPromises = mestriIds.map(id => getMestriById(id));
+    const mestris = await Promise.all(mestriPromises);
+    const mestriMap = new Map(mestris.filter(m => m).map(m => [m.id, m]));
+
+    // Enhance payrolls with Mestri details
+    return payrolls.map(payroll => ({
+      ...payroll,
+      mestri: mestriMap.get(payroll.mestriId)
+    }));
   } catch (error) {
-    console.error('Error fetching payrolls:', error);
+    console.error('Error in getPayrolls:', error);
     throw error;
   }
 };
@@ -110,7 +133,22 @@ export const getPayrolls = async (month: string): Promise<PayrollData[]> => {
 // Save or update a payroll record
 export const savePayroll = async (payrollData: PayrollData): Promise<PayrollData> => {
   try {
-    return await saveFirebasePayroll(payrollData);
+    // Remove the mestri object before saving to Firestore
+    const { mestri, ...dataToSave } = payrollData;
+    const savedPayroll = await saveFirebasePayroll(dataToSave);
+    
+    // If we have mestri data, include it in the returned object
+    if (mestri) {
+      return { ...savedPayroll, mestri };
+    }
+    
+    // Otherwise, fetch the mestri data
+    if (savedPayroll.mestriId) {
+      const mestriData = await getMestriById(savedPayroll.mestriId);
+      return { ...savedPayroll, mestri: mestriData };
+    }
+    
+    return savedPayroll;
   } catch (error) {
     console.error('Error saving payroll:', error);
     throw error;
