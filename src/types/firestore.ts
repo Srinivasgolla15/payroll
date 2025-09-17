@@ -30,9 +30,10 @@ export interface Employee {
   id: string;               // Firestore doc ID
   empId: string;            // Business employee ID
   name: string;
-  number: string;
+  phoneNumber: string;
   bankHolderName: string;
   ifsc: string;
+  perDayWage: number;
   accountNumber: string;
   status: EmployeeStatus;
   joiningDate: string;      // keep consistent naming
@@ -69,7 +70,7 @@ export interface PayrollData {
   food: number;
   eb: number;
   shoes: number;
-  kancha: number;
+  karcha: number;
   lastMonth: number;
   deductions: number;
   totalPayment: number;

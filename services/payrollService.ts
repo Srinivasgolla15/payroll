@@ -2,7 +2,7 @@ import { PayrollData, PaymentStatus, PaymentMethod, Employee, Mestri } from '../
 import * as XLSX from 'xlsx';
 import { getPayrolls as getFirebasePayrolls, savePayroll as saveFirebasePayroll, getMestriById } from './firebase';
 
-const OT_MULTIPLIER = 1.5;
+// const OT_MULTIPLIER = 1.5;
 
 // Calculate payroll details based on input data
 export const calculatePayroll = (data: PayrollData): PayrollData => {
@@ -11,34 +11,36 @@ export const calculatePayroll = (data: PayrollData): PayrollData => {
   const perDay = Number(data.perDayWage) || 0;
   const totalDuties = duties + ot;
   const ph = Number((data as any).ph) || 0;
-  const salary = duties * perDay + ph * 497.65;
-  const otWages = ot * perDay * OT_MULTIPLIER;
-  const totalSalary = salary + otWages;
+  const salary = totalDuties * perDay + ph * 497.65;
+  // const otWages = ot * perDay * OT_MULTIPLIER;
+  const totalSalary = salary ;
   // deductions components
   const bus = Number((data as any).bus) || 0;
   const food = Number((data as any).food) || 0;
   const eb = Number((data as any).eb) || 0;
   const shoes = Number((data as any).shoes) || 0;
-  const kancha = Number((data as any).kancha) || 0;
+  const karcha = Number((data as any).karcha) || 0;
   const lastMonth = Number((data as any).lastMonth) || 0;
   const advance = Number(data.advance) || 0;
   const others = Number(data.others) || 0;
-  const totalDeductions = ph + bus + food + eb + shoes + kancha + lastMonth + advance + others;
+  const totalDeductions = ph + bus + food + eb + shoes + karcha + lastMonth + advance + others;
   const payment = totalSalary + (Number(data.bonus) || 0) - totalDeductions;
   const balance = payment - (Number(data.cash) || 0);
   const paid = data.paid || false;
+  const remarks = data.remarks || "";
   const status = paid ? PaymentStatus.Paid : (balance <= 0 ? PaymentStatus.Unpaid : PaymentStatus.Pending);
 
   return {
     ...data,
     totalDuties,
     salary,
-    otWages,
+    // otWages,
     totalSalary,
     netSalary: payment,
     totalPayment: payment,
     balance,
     paid,
+    remarks,
     status,
     updatedAt: new Date().toISOString(),
   };
@@ -63,6 +65,7 @@ export const createDefaultPayroll = (employee: Employee, month: string): Payroll
     // payment details
     cashOrAccount: PaymentMethod.Cash,
     paid: false,
+    remarks: "",
     status: PaymentStatus.Pending,
     // salary components
     basic: 0,
@@ -76,7 +79,7 @@ export const createDefaultPayroll = (employee: Employee, month: string): Payroll
     food: 0,
     eb: 0,
     shoes: 0,
-    kancha: 0,
+    karcha: 0,
     lastMonth: 0,
     deductions: 0,
     totalPayment: 0,
@@ -174,7 +177,7 @@ export const exportPayrollToExcel = (rows: PayrollData[], filename: string) => {
     Food: (r as any).food,
     EB: (r as any).eb,
     Shoes: (r as any).shoes,
-    Karcha: (r as any).kancha,
+    Karcha: (r as any).karcha,
     LastMonth: (r as any).lastMonth,
     Advance: r.advance,
     Payment: r.totalPayment,

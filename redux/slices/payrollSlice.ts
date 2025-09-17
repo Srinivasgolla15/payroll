@@ -109,7 +109,7 @@ export const updateEmployeePayroll = createAsyncThunk<PayrollData, Partial<Payro
         food: partialData.food ?? existingData?.food ?? 0,
         eb: partialData.eb ?? existingData?.eb ?? 0,
         shoes: partialData.shoes ?? existingData?.shoes ?? 0,
-        kancha: partialData.kancha ?? existingData?.kancha ?? 0,
+        karcha: partialData.karcha ?? existingData?.karcha ?? 0,
         lastMonth: partialData.lastMonth ?? existingData?.lastMonth ?? 0,
         deductions: partialData.deductions ?? existingData?.deductions ?? 0,
         totalPayment: partialData.totalPayment ?? existingData?.totalPayment ?? 0,
@@ -132,6 +132,7 @@ export const updateEmployeePayroll = createAsyncThunk<PayrollData, Partial<Payro
         balance: partialData.balance ?? existingData?.balance ?? 0,
         updatedAt: new Date().toISOString(),
         createdAt: partialData.createdAt ?? existingData?.createdAt ?? new Date().toISOString(),
+        remarks: partialData.remarks ?? existingData?.remarks ?? '',
       } as PayrollData;
       
       // Remove the mestri object to avoid Firestore errors
@@ -193,7 +194,7 @@ export const createDefaultPayroll = createAsyncThunk<PayrollData, { employee: Em
         food: 0,
         eb: 0,
         shoes: 0,
-        kancha: 0,
+        karcha: 0,
         lastMonth: 0,
         deductions: 0,
         totalPayment: 0,
@@ -216,6 +217,7 @@ export const createDefaultPayroll = createAsyncThunk<PayrollData, { employee: Em
         balance: 0,
         updatedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
+        remarks: '',
       };
       return await saveFirebasePayroll(defaultPayroll);
     } catch (error: any) {
