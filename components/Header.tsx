@@ -1,5 +1,5 @@
 import React from 'react';
-import { MONTHS } from '../constants';
+import { YearMonthPicker } from './YearMonthPicker';
 import { PlusIcon } from './icons/PlusIcon';
 import { ExportIcon } from './icons/ExportIcon';
 import { EmployeeStatus } from '../types';
@@ -7,6 +7,7 @@ import { SunIcon } from './icons/SunIcon';
 import { MoonIcon } from './icons/MoonIcon';
 
 interface HeaderProps {
+  months: string[];
   currentMonth: string;
   onMonthChange: (month: string) => void;
   onAddEmployee: () => void;
@@ -21,14 +22,20 @@ interface HeaderProps {
   onExport?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentMonth, onMonthChange, onAddEmployee, onAddMestri, statusFilter, onStatusFilterChange, activeView, theme, onThemeToggle, searchTerm = '', onSearchChange, onExport }) => {
+export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthChange, onAddEmployee, onAddMestri, statusFilter, onStatusFilterChange, activeView, theme, onThemeToggle, searchTerm = '', onSearchChange, onExport }) => {
+  // Calculate min/max year/month for picker
+  const now = new Date();
+  const minYear = now.getFullYear();
+  const minMonth = now.getMonth() + 1;
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  const maxYear = maxDate.getFullYear();
+  const maxMonth = maxDate.getMonth() + 1;
   const titles: Record<string, { title: string, subtitle: string }> = {
     'Payroll': { title: 'Payroll Management', subtitle: `Manage and track employee payroll for ${currentMonth}.` },
     'Employees': { title: 'Employee Management', subtitle: 'View and manage employee details.' },
     'Mestris': { title: 'Mestris Management', subtitle: 'View and manage mestri details.'},
-    'Dashboard': { title: 'Dashboard', subtitle: 'Overview of payroll analytics.' },
-    'Exports': { title: 'Exports', subtitle: 'Generate and download reports.' },
-    'Settings': { title: 'Settings', subtitle: 'Configure application settings.' },
+    'Dashboard': { title: 'Dashboard', subtitle: '' },
+        'Settings': { title: 'Settings', subtitle: 'Configure application settings.' },
   };
 
   const currentViewInfo = titles[activeView] || { title: 'Dashboard', subtitle: '' };
@@ -78,17 +85,18 @@ export const Header: React.FC<HeaderProps> = ({ currentMonth, onMonthChange, onA
           <option value={EmployeeStatus.Left}>Left</option>
         </select>
         {activeView === 'Payroll' && (
-          <select
-            aria-label="Month selector"
-            value={currentMonth}
-            onChange={(e) => onMonthChange(e.target.value)}
-            className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-          >
-            {MONTHS.map((month) => (
-              <option key={month} value={month}>{month}</option>
-            ))}
-          </select>
-        )}
+  <div className="w-full max-w-2xl">
+    <YearMonthPicker
+      year={parseInt(currentMonth.split('-')[0], 10)}
+      month={parseInt(currentMonth.split('-')[1], 10)}
+      onChange={(year, month) => onMonthChange(`${year}-${month.toString().padStart(2, '0')}`)}
+      minYear={minYear}
+      maxYear={maxYear}
+      minMonth={minMonth}
+      maxMonth={maxMonth}
+    />
+  </div>
+)}
         {activeView === 'Payroll' && (
           <input
             type="text"

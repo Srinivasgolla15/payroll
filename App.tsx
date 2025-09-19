@@ -4,6 +4,7 @@ import { Timestamp } from 'firebase/firestore';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PayrollTable } from './components/PayrollTable';
+import { PayrollSummaryByMonth } from './components/PayrollSummaryByMonth';
 import { AddEmployeeModal } from './components/AddEmployeeModal';
 import { EmployeesView } from './components/EmployeesView';
 import { MestrisView } from './components/MestrisView';
@@ -57,6 +58,47 @@ type AddEmployeeFormPayload = {
 
 const App: React.FC = () => {
   const dispatch = useAppDispatch();
+
+  // Import employees as zeroed payroll for the selected month
+  const importZeroedPayrollForMonth = async () => {
+    for (const emp of masterEmployees) {
+      const zeroPayroll = {
+        ...emp,
+        month: currentMonth,
+        duties: 0,
+        ot: 0,
+        advance: 0,
+        ph: 0,
+        bus: 0,
+        food: 0,
+        eb: 0,
+        shoes: 0,
+        karcha: 0,
+        lastMonth: 0,
+        deductions: 0,
+        totalPayment: 0,
+        sNo: 0,
+        pf: 0,
+        esi: 0,
+        tds: 0,
+        others: 0,
+        bonus: 0,
+        cash: 0,
+        totalDuties: 0,
+        salary: 0,
+        otWages: 0,
+        totalSalary: 0,
+        netSalary: 0,
+        balance: 0,
+        paid: false,
+        status: emp.status,
+        remarks: '',
+        id: `${emp.empId}_${currentMonth}`
+      } as any;
+      await dispatch(updateEmployeePayroll(zeroPayroll));
+    }
+    dispatch(fetchPayrolls(currentMonth));
+  };
 
   // ✅ Redux state
   const { 
@@ -142,11 +184,66 @@ const App: React.FC = () => {
 
   const currentPayrollData = payrollDataByMonth[currentMonth] || [];
   const processedPayrollData = useMemo(() => {
+    const now = new Date();
+    const [year, month] = currentMonth.split('-').map(Number);
+    const selectedDate = new Date(year, month - 1);
+    // Past months: render only if data exists
+    if (selectedDate < new Date(now.getFullYear(), now.getMonth())) {
+      if (!currentPayrollData || currentPayrollData.length === 0) {
+        return [];
+      }
       const filteredData = currentPayrollData.filter(emp =>
         statusFilter === 'All' || emp.status === statusFilter
       );
       return filteredData.map(emp => calculatePayroll(emp));
-  }, [currentPayrollData, statusFilter]);
+    }
+    // Future months in a future year: render nothing
+    if (year > now.getFullYear()) {
+      return [];
+    }
+    // Future months in current year (including current month):
+    if (year === now.getFullYear() && month > (now.getMonth() + 1)) {
+      // Show present employees with zeroed payrolls
+      return masterEmployees.map(emp => calculatePayroll({
+        ...emp,
+        month: currentMonth,
+        duties: 0,
+        ot: 0,
+        advance: 0,
+        ph: 0,
+        bus: 0,
+        food: 0,
+        eb: 0,
+        shoes: 0,
+        karcha: 0,
+        lastMonth: 0,
+        deductions: 0,
+        totalPayment: 0,
+        sNo: 0,
+        pf: 0,
+        esi: 0,
+        tds: 0,
+        others: 0,
+        bonus: 0,
+        cash: 0,
+        totalDuties: 0,
+        salary: 0,
+        otWages: 0,
+        totalSalary: 0,
+        netSalary: 0,
+        balance: 0,
+        paid: false,
+        status: emp.status,
+        remarks: '',
+        id: `${emp.empId}_${currentMonth}`
+      } as any));
+    }
+    // Current month: normal payroll
+    const filteredData = currentPayrollData.filter(emp =>
+      statusFilter === 'All' || emp.status === statusFilter
+    );
+    return filteredData.map(emp => calculatePayroll(emp));
+  }, [currentPayrollData, statusFilter, masterEmployees, currentMonth]);
   
   const filteredMasterEmployees = useMemo(() => {
     return masterEmployees.filter(emp => statusFilter === 'All' || emp.status === statusFilter);
@@ -163,6 +260,7 @@ const App: React.FC = () => {
         
         <div className="relative z-10 flex flex-col flex-1 p-4 sm:p-6 lg:p-8 bg-transparent dark:backdrop-blur-sm dark:bg-gray-900/30 overflow-hidden">
           <Header
+            months={Object.keys(payrollDataByMonth).sort().reverse()}
             currentMonth={currentMonth}
             onMonthChange={handleMonthChange}
             onAddEmployee={() => dispatch(setAddEmployeeModalOpen(true))}
@@ -189,21 +287,50 @@ const App: React.FC = () => {
           />
           <div className="flex-1 flex flex-col overflow-hidden mt-4">
             {activeMenu === 'Payroll' && (
-              <div className="flex-1 overflow-auto pr-2">
-                <PayrollTable
-                  data={processedPayrollData.filter(e => {
-                    if (!payrollSearch) return true;
-                    const q = payrollSearch.toLowerCase();
-                    return (
-                      e.name.toLowerCase().includes(q) ||
-                      e.empId.toLowerCase().includes(q) ||
-                      ((e as any).mestri?.name || '').toLowerCase().includes(q)
-                    );
-                  })}
-                  onUpdateEmployee={handleUpdateEmployee}
-                />
-              </div>
-            )}
+  <>
+    {processedPayrollData.length === 0 ? (() => {
+      const now = new Date();
+      const [year, month] = currentMonth.split('-').map(Number);
+      const selectedDate = new Date(year, month - 1);
+      if (selectedDate < new Date(now.getFullYear(), now.getMonth())) {
+        // Past month, no data
+        return (
+          <div className="flex-1 flex items-center justify-center text-lg text-gray-500 dark:text-gray-400">
+            There is no data entered in this month.
+          </div>
+        );
+      } else {
+        // Current or future month, no data: show Import Employees button
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-lg text-gray-500 dark:text-gray-400">
+            <span>No payroll data for this month.</span>
+            <button
+              className="px-6 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              onClick={importZeroedPayrollForMonth}
+            >
+              Import Employees for {currentMonth}
+            </button>
+          </div>
+        );
+      }
+    })() : (
+      <div className="flex-1 overflow-auto pr-2">
+        <PayrollTable
+          data={processedPayrollData.filter(e => {
+            if (!payrollSearch) return true;
+            const q = payrollSearch.toLowerCase();
+            return (
+              e.name.toLowerCase().includes(q) ||
+              e.empId.toLowerCase().includes(q) ||
+              ((e as any).mestri?.name || '').toLowerCase().includes(q)
+            );
+          })}
+          onUpdateEmployee={handleUpdateEmployee}
+        />
+      </div>
+    )}
+  </>
+)}
             {activeMenu === 'Employees' && (
               <EmployeesView employees={filteredMasterEmployees} mestriList={normalizedMestris} />
             )}

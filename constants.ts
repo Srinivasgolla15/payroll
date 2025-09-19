@@ -1,6 +1,6 @@
 import { PayrollData, MasterEmployee, Mestri, Employee } from './types';
 
-export const MONTHS: string[] = [];
+// MONTHS will be generated dynamically from Redux payrollDataByMonth
 
 export const INITIAL_MESTRIS: Mestri[] = [];
 

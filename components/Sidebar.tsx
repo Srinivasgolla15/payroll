@@ -15,8 +15,7 @@ const menuItems = [
   { name: 'Employees', icon: UsersIcon },
   { name: 'Mestris', icon: BriefcaseIcon },
   { name: 'Payroll', icon: PayrollIcon },
-  { name: 'Exports', icon: ExportIcon },
-];
+  ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeMenu, setActiveMenu }) => {
   return (
