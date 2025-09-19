@@ -10,7 +10,7 @@ import { EmployeesView } from './components/EmployeesView';
 import { MestrisView } from './components/MestrisView';
 import { AddMestriModal } from './components/AddMestriModal';
 
-import { Employee, Mestri, PaymentMethod, EmployeeStatus, PayrollData } from './src/types/firestore';
+import { Employee, Mestri, PaymentMethod, PaymentStatus, EmployeeStatus, PayrollData } from './src/types/firestore';
 
 import { calculatePayroll, exportPayrollToExcel } from './services/payrollService';
 import { useAppSelector, useAppDispatch } from './redux/hooks';
@@ -24,6 +24,15 @@ import {
 import { addEmployeeWithId, fetchEmployees } from './redux/slices/employeesSlice';
 import { createMestri as addMestriWithId, fetchMestris, editMestri as updateMestri } from './redux/slices/mestriSlice';
 import { updateEmployeePayroll, changeMonth, createDefaultPayroll, fetchPayrolls } from './redux/slices/payrollSlice';
+
+// Helper to check if a month is in the future
+const isFutureMonth = (monthString: string): boolean => {
+  const [year, month] = monthString.split('-').map(Number);
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1; // getMonth() is 0-indexed
+  return year > currentYear || (year === currentYear && month > currentMonth);
+};
 
 /* ✅ Helper to normalize Firestore dates */
 const normalizeMestriDates = (mestri: Mestri): Mestri => {
@@ -187,8 +196,10 @@ const App: React.FC = () => {
     const now = new Date();
     const [year, month] = currentMonth.split('-').map(Number);
     const selectedDate = new Date(year, month - 1);
-    // Past months: render only if data exists
-    if (selectedDate < new Date(now.getFullYear(), now.getMonth())) {
+    const currentDate = new Date(now.getFullYear(), now.getMonth());
+    
+    // For past months: only show existing payroll data
+    if (selectedDate < currentDate) {
       if (!currentPayrollData || currentPayrollData.length === 0) {
         return [];
       }
@@ -197,14 +208,95 @@ const App: React.FC = () => {
       );
       return filteredData.map(emp => calculatePayroll(emp));
     }
-    // Future months in a future year: render nothing
-    if (year > now.getFullYear()) {
-      return [];
+
+    // For future months: return existing data or zeroed out data
+    if (isFutureMonth(currentMonth)) {
+      return masterEmployees
+        .filter(emp => statusFilter === 'All' || emp.status === statusFilter)
+        .map(emp => {
+          // Check if we have existing payroll data for this employee and month
+          const existingData = currentPayrollData.find(p => p.empId === emp.empId);
+          
+          // If we have existing data, use it; otherwise create zeroed data
+          if (existingData) {
+            return calculatePayroll(existingData);
+          }
+          
+          // Create zeroed out data for new entries
+          const zeroedData: PayrollData = {
+            // Required fields with defaults
+            id: `${emp.empId}_${currentMonth}`,
+            employeeId: emp.empId,
+            mestriId: emp.mestriId || '',
+            month: currentMonth,
+            name: emp.name,
+            empId: emp.empId,
+            dept: emp.dept || '',
+            designation: '',
+            joiningDate: emp.joiningDate || new Date().toISOString().split('T')[0],
+            
+            // Payment and calculation fields
+            basic: 0,
+            dailyWage: emp.perDayWage || 0,
+            perDayWage: emp.perDayWage || 0,
+            duties: 0,
+            ot: 0,
+            advance: 0,
+            ph: 0,
+            bus: 0,
+            food: 0,
+            eb: 0,
+            shoes: 0,
+            karcha: 0,
+            lastMonth: 0,
+            deductions: 0,
+            totalPayment: 0,
+            
+            // Additional fields
+            sNo: 0,
+            pf: 0,
+            esi: 0,
+            tds: 0,
+            others: 0,
+            bonus: 0,
+            cash: 0,
+            cashOrAccount: PaymentMethod.Cash,
+            paid: false,
+            status: PaymentStatus.Unpaid,
+            
+            // Bank details
+            accountNumber: emp.accountNumber || '',
+            ifsc: emp.ifsc || '',
+            bankName: '', // Not available on Employee, will be empty
+            bankHolderName: emp.bankHolderName || '',
+            
+            // Calculated fields
+            totalDuties: 0,
+            salary: 0,
+            otWages: 0,
+            totalSalary: 0,
+            netSalary: 0,
+            balance: 0,
+            
+            // Timestamps
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            
+            // Optional field
+            employeeDocId: emp.id
+          };
+          return calculatePayroll(zeroedData);
+        });
     }
-    // Future months in current year (including current month):
-    if (year === now.getFullYear() && month > (now.getMonth() + 1)) {
-      // Show present employees with zeroed payrolls
-      return masterEmployees.map(emp => calculatePayroll({
+
+    // For current and future months: merge existing payroll data with master employees list
+    const employeeMap = new Map<string, PayrollData>();
+    
+    // First add all master employees with default/zero values
+    masterEmployees.forEach(emp => {
+      if (statusFilter !== 'All' && emp.status !== statusFilter) return;
+      
+      employeeMap.set(emp.empId, calculatePayroll({
         ...emp,
         month: currentMonth,
         duties: 0,
@@ -237,12 +329,15 @@ const App: React.FC = () => {
         remarks: '',
         id: `${emp.empId}_${currentMonth}`
       } as any));
-    }
-    // Current month: normal payroll
-    const filteredData = currentPayrollData.filter(emp =>
-      statusFilter === 'All' || emp.status === statusFilter
-    );
-    return filteredData.map(emp => calculatePayroll(emp));
+    });
+
+    // Then override with any existing payroll data
+    currentPayrollData.forEach(payroll => {
+      if (statusFilter !== 'All' && payroll.status !== statusFilter) return;
+      employeeMap.set(payroll.empId, calculatePayroll(payroll));
+    });
+
+    return Array.from(employeeMap.values());
   }, [currentPayrollData, statusFilter, masterEmployees, currentMonth]);
   
   const filteredMasterEmployees = useMemo(() => {
@@ -288,6 +383,12 @@ const App: React.FC = () => {
           <div className="flex-1 flex flex-col overflow-hidden mt-4">
             {activeMenu === 'Payroll' && (
   <>
+    {isFutureMonth(currentMonth) && (
+      <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4" role="alert">
+        <p className="font-bold">Future Month Selected</p>
+        <p>You are viewing a future month. All values are zeroed out but can be edited. Changes will be saved for future reference.</p>
+      </div>
+    )}
     {processedPayrollData.length === 0 ? (() => {
       const now = new Date();
       const [year, month] = currentMonth.split('-').map(Number);

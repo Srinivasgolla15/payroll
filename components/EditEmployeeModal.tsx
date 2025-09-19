@@ -1,5 +1,5 @@
 import React, { useMemo, useState, memo } from 'react';
-import { Employee, Mestri } from '../src/types/firestore';
+import { Employee, Mestri, EmployeeStatus } from '../src/types/firestore';
 import { useAppSelector } from '../redux/hooks';
 
 interface EditEmployeeModalProps {
@@ -59,6 +59,7 @@ export const EditEmployeeModal: React.FC<EditEmployeeModalProps> = ({ employee, 
   }), [employee]);
 
   const [form, setForm] = useState<FormData>(initialForm);
+  const [status, setStatus] = useState<Employee['status']>(employee.status || EmployeeStatus.Active);
   const mestris = useAppSelector(s => s.mestri.list) as unknown as Mestri[];
 
   const isValid = useMemo(() => (
@@ -86,6 +87,7 @@ export const EditEmployeeModal: React.FC<EditEmployeeModalProps> = ({ employee, 
       bankHolderName: form.bankHolderName,
       accountNumber: form.accountNumber,
       phoneNumber: form.phoneNumber,
+      status,
     };
     onSave(updated);
   };
@@ -122,6 +124,33 @@ export const EditEmployeeModal: React.FC<EditEmployeeModalProps> = ({ employee, 
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Status</label>
+              <div className="inline-flex items-center rounded-md shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setStatus(EmployeeStatus.Active)}
+                  className={`px-4 py-2 text-sm font-medium rounded-l-md ${
+                    status === EmployeeStatus.Active
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  Active
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatus(EmployeeStatus.Left)}
+                  className={`px-4 py-2 text-sm font-medium rounded-r-md ${
+                    status === EmployeeStatus.Left
+                      ? 'bg-red-600 text-white'
+                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  Left
+                </button>
+              </div>
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-3">

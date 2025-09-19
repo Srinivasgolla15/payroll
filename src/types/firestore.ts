@@ -37,7 +37,8 @@ export interface Employee {
   accountNumber: string;
   status: EmployeeStatus;
   joiningDate: string;      // keep consistent naming
-  mestriId: string;         // reference to Mestri
+  mestriId: string;    
+  dept: string;    // reference to Mestri
   createdAt?: string;
   updatedAt?: string;
 }
@@ -74,6 +75,7 @@ export interface PayrollData {
   lastMonth: number;
   deductions: number;
   totalPayment: number;
+
 
   // Additional fields (legacy)
   sNo: number;

@@ -42,6 +42,12 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const key = name as keyof PayrollData;
+    
+    // Don't process if the value hasn't actually changed
+    if ((form as any)[key]?.toString() === value) {
+      return;
+    }
+    
     setForm(prev => {
       const next: PayrollData = {
         ...prev,
@@ -50,16 +56,25 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
       // Auto calculations
       const duties = Number(next.duties) || 0;
       const ot = Number(next.ot) || 0;
-      const perDay = Number(next.perDayWage) || 0;
-      const salary = next.totalDuties * perDay;
-      // const otWages = ot * perDay ;
-      const totalSalary = salary;
-      next.totalDuties = duties + ot;
-      next.salary = salary;
-      // next.otWages = otWages;
-      next.totalSalary = totalSalary;
-      // Deductions use ph, bus, food, eb, shoes, karcha, lastMonth
       const ph = Number((next as any).ph) || 0;
+      const perDay = Number(next.perDayWage) || 0;
+      
+      // Calculate regular salary (duties + OT, excluding PH)
+      const regularDuties = duties + ot;
+      const regularSalary = regularDuties * perDay;
+      
+      // Calculate PH pay (PH days * 497.65)
+      const phPay = ph * 497.65;
+      
+      // Total salary is regular salary + PH pay
+      const salary = regularSalary + phPay;
+      
+      // Calculate total duties for display (regular + PH)
+      next.totalDuties = regularDuties + ph;
+      next.salary = salary;
+      next.totalSalary = salary;
+      
+      // Calculate deductions (exclude PH from deductions)
       const bus = Number((next as any).bus) || 0;
       const food = Number((next as any).food) || 0;
       const eb = Number((next as any).eb) || 0;
@@ -67,10 +82,14 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
       const karcha = Number((next as any).karcha) || 0;
       const lastMonth = Number((next as any).lastMonth) || 0;
       const advance = Number(next.advance) || 0;
-      const others = Number(next.others) || 0; // kept if present
-      const deductions = ph + bus + food + eb + shoes + karcha + lastMonth + advance + others;
+      const others = Number(next.others) || 0;
+      
+      // Calculate total deductions (exclude PH)
+      const deductions = bus + food + eb + shoes + karcha + lastMonth + advance + others;
       next.deductions = deductions;
-      next.totalPayment = totalSalary + (Number(next.bonus) || 0) - deductions;
+      
+      // Calculate final payment
+      next.totalPayment = salary + (Number(next.bonus) || 0) - deductions;
       next.netSalary = next.totalPayment;
       next.balance = next.totalPayment - (Number(next.cash) || 0);
       return next;
@@ -170,21 +189,57 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
             <div className="border-t border-gray-200 pt-4">
               <h3 className="text-md font-medium text-gray-900 mb-4">Attendance & Earnings</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {['duties', 'ot', 'ph'].map((k) => (
-                  <div key={k} className="space-y-1">
-                    <label htmlFor={k} className="block text-sm font-medium text-slate-700">
-                      {k.toUpperCase()}
-                    </label>
-                    <input
-                      type="number"
-                      id={k}
-                      name={k}
-                      value={(form as any)[k] ?? ''}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
-                    />
-                  </div>
-                ))}
+                <div className="space-y-1">
+                  <label htmlFor="duties" className="block text-sm font-medium text-slate-700">
+                    DUTIES
+                  </label>
+                  <input
+                    type="number"
+                    id="duties"
+                    name="duties"
+                    value={form.duties ?? 0}
+                    onChange={handleChange}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                    min="0"
+                    step="0.5"
+                    className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="ot" className="block text-sm font-medium text-slate-700">
+                    OT
+                  </label>
+                  <input
+                    type="number"
+                    id="ot"
+                    name="ot"
+                    value={form.ot ?? 0}
+                    onChange={handleChange}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                    min="0"
+                    step="0.5"
+                    className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="ph" className="block text-sm font-medium text-slate-700">
+                    PH
+                  </label>
+                  <input
+                    type="number"
+                    id="ph"
+                    name="ph"
+                    value={form.ph ?? 0}
+                    onChange={handleChange}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                    min="0"
+                    step="1"
+                    className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
+                  />
+                </div>
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">Total</label>
                   <div className="mt-1 px-3 py-2 bg-gray-50 text-sm text-gray-900 rounded-md border border-gray-200">

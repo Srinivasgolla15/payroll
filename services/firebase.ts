@@ -1,21 +1,21 @@
 // src/firebase.ts
 import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  DocumentReference,
-  updateDoc,
-  getDocs,
-  query,
-  where,
-  deleteDoc,
-  Timestamp,
-  QueryDocumentSnapshot,
-  DocumentData,
-} from "firebase/firestore";
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocs, 
+  query, 
+  where, 
+  Timestamp, 
+  DocumentData, 
+  Query, 
+  QueryDocumentSnapshot 
+} from 'firebase/firestore';
 import { getAnalytics } from "firebase/analytics";
 import {
   Mestri,
@@ -183,94 +183,143 @@ export const updateEmployee = async (
 };
 
 /* --------------------- PAYROLL --------------------- */
+// Helper function to map a document to PayrollData
+const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
+  const data = doc.data();
+  const now = new Date().toISOString();
+  const employeeId = data.employeeId || '';
+  
+  // Get employee data
+  let employeeData: any = {};
+  try {
+    if (employeeId) {
+      const employeeDoc = await getDoc(doc(db, 'employees', employeeId));
+      if (employeeDoc.exists()) {
+        employeeData = employeeDoc.data() || {};
+      }
+    }
+  } catch (error) {
+    console.warn(`Could not fetch employee data for ${employeeId}:`, error);
+  }
+  
+  // Get mestri data if available
+  let mestriData: Mestri | null = null;
+  if (employeeData.mestriId) {
+    try {
+      mestriData = await getMestriById(employeeData.mestriId);
+    } catch (error) {
+      console.warn(`Could not fetch mestri data for ${employeeData.mestriId}:`, error);
+    }
+  }
+  
+  const defaultMestri: Mestri = {
+    id: employeeData.mestriId || "",
+    mestriId: employeeData.mestriId || "",
+    name: "Unknown Mestri",
+    phoneNumber: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  return {
+    id: doc.id,
+    employeeId,
+    mestriId: employeeData.mestriId || "",
+    month: data.month || "",
+    name: employeeData.name || data.name || "",
+    empId: employeeData.empId || data.empId || employeeId,
+    dept: employeeData.dept || data.dept || "General",
+    designation: employeeData.designation || data.designation || "Worker",
+    joiningDate: employeeData.joiningDate || data.joiningDate || now.split("T")[0],
+    basic: Number(data.basic) || 0,
+    dailyWage: Number(data.dailyWage) || 0,
+    perDayWage: Number(data.perDayWage) || 0,
+    duties: Number(data.duties) || 0,
+    ot: Number(data.ot) || 0,
+    advance: Number(data.advance) || 0,
+    ph: Number(data.ph) || 0,
+    bus: Number(data.bus) || 0,
+    food: Number(data.food) || 0,
+    eb: Number(data.eb) || 0,
+    shoes: Number(data.shoes) || 0,
+    karcha: Number(data.karcha) || 0,
+    lastMonth: Number(data.lastMonth) || 0,
+    deductions: Number(data.deductions) || 0,
+    totalPayment: Number(data.totalPayment) || 0,
+    sNo: Number(data.sNo) || 0,
+    pf: Number(data.pf) || 0,
+    esi: Number(data.esi) || 0,
+    tds: Number(data.tds) || 0,
+    others: Number(data.others) || 0,
+    bonus: Number(data.bonus) || 0,
+    cash: Number(data.cash) || 0,
+    cashOrAccount: data.cashOrAccount === PaymentMethod.Account ? PaymentMethod.Account : PaymentMethod.Cash,
+    paid: Boolean(data.paid),
+    status: data.status === PaymentStatus.Paid ? PaymentStatus.Paid : 
+            data.status === PaymentStatus.Unpaid ? PaymentStatus.Unpaid : PaymentStatus.Pending,
+    accountNumber: employeeData.accountNumber || data.accountNumber || "",
+    ifsc: employeeData.ifsc || data.ifsc || "",
+    bankName: employeeData.bankName || data.bankName || "",
+    bankHolderName: employeeData.bankHolderName || data.bankHolderName || "",
+    totalDuties: Number(data.totalDuties) || 0,
+    salary: Number(data.salary) || 0,
+    otWages: Number(data.otWages) || 0,
+    totalSalary: Number(data.totalSalary) || 0,
+    netSalary: Number(data.netSalary) || 0,
+    balance: Number(data.balance) || 0,
+    createdAt: toDateString(data.createdAt || now),
+    updatedAt: toDateString(data.updatedAt || now),
+    mestri: mestriData || defaultMestri,
+  };
+};
+
 export const getPayrolls = async (
   month: string,
   filter?: { mestriId?: string; employeeId?: string }
 ): Promise<PayrollData[]> => {
-  let q = query(payrollRef, where("month", "==", month));
-  
-  // Apply filters if provided
-  if (filter) {
-    if (filter.mestriId) {
-      q = query(q, where("mestriId", "==", filter.mestriId));
+  try {
+    // Start with base query
+    let q = query(collection(db, 'payroll'), where('month', '==', month));
+    
+    // Add employeeId filter if provided
+    if (filter?.employeeId) {
+      q = query(q, where('employeeId', '==', filter.employeeId));
     }
-    if (filter.employeeId) {
-      q = query(q, where("employeeId", "==", filter.employeeId));
+    
+    // If mestriId is provided, we need to filter after fetching
+    if (filter?.mestriId) {
+      const snapshot = await getDocs(q);
+      const filteredPromises: Promise<PayrollData>[] = [];
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data() as { employeeId?: string };
+        const employeeId = data.employeeId;
+        
+        if (employeeId) {
+          try {
+            const employeeDoc = await getDoc(doc(db, 'employees', employeeId));
+            if (employeeDoc.exists()) {
+              const employeeData = employeeDoc.data() as { mestriId?: string };
+              if (employeeData?.mestriId === filter.mestriId) {
+                filteredPromises.push(mapPayrollDoc(doc as any));
+              }
+            }
+          } catch (error) {
+            console.warn(`Error fetching employee ${employeeId}:`, error);
+          }
+        }
+      }
+      
+      return Promise.all(filteredPromises);
     }
+    
+    // No mestriId filter, just fetch all matching month
+    const snapshot = await getDocs(q);
+    return Promise.all(snapshot.docs.map(doc => mapPayrollDoc(doc as any)));
+  } catch (error) {
+    console.error('Error in getPayrolls:', error);
+    throw error;
   }
-  
-  const snapshot = await getDocs(q);
-
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
-    const now = new Date().toISOString();
-    const defaultMestri: Mestri = {
-      id: data.mestriId || "",
-      mestriId: data.mestriId || "",
-      name: "Unknown Mestri",
-      phoneNumber: "",
-      createdAt: now,
-      updatedAt: now,
-    };
-    return {
-      id: doc.id,
-      employeeId: data.employeeId || "",
-      mestriId: data.mestriId || "",
-      month: data.month || month,
-      name: data.name || "",
-      empId: data.empId || "",
-      dept: data.dept || "General",
-      designation: data.designation || "Worker",
-      joiningDate: data.joiningDate || now.split("T")[0],
-      basic: Number(data.basic) || 0,
-      dailyWage: Number(data.dailyWage) || 0,
-      perDayWage: Number(data.perDayWage) || 0,
-      duties: Number(data.duties) || 0,
-      ot: Number(data.ot) || 0,
-      advance: Number(data.advance) || 0,
-      ph: Number(data.ph) || 0,
-      bus: Number(data.bus) || 0,
-      food: Number(data.food) || 0,
-      eb: Number(data.eb) || 0,
-      shoes: Number(data.shoes) || 0,
-      karcha: Number(data.karcha) || 0,
-      lastMonth: Number(data.lastMonth) || 0,
-      deductions: Number(data.deductions) || 0,
-      totalPayment: Number(data.totalPayment) || 0,
-      sNo: Number(data.sNo) || 0,
-      pf: Number(data.pf) || 0,
-      esi: Number(data.esi) || 0,
-      tds: Number(data.tds) || 0,
-      others: Number(data.others) || 0,
-      bonus: Number(data.bonus) || 0,
-      cash: Number(data.cash) || 0,
-      cashOrAccount:
-        data.cashOrAccount === PaymentMethod.Account
-          ? PaymentMethod.Account
-          : PaymentMethod.Cash,
-      paid: Boolean(data.paid),
-      status:
-        data.status === PaymentStatus.Paid
-          ? PaymentStatus.Paid
-          : data.status === PaymentStatus.Unpaid
-          ? PaymentStatus.Unpaid
-          : PaymentStatus.Pending,
-      accountNumber: data.accountNumber || "",
-      ifsc: data.ifsc || "",
-      bankName: data.bankName || "",
-      bankHolderName: data.bankHolderName || "",
-      totalDuties: Number(data.totalDuties) || 0,
-      salary: Number(data.salary) || 0,
-      otWages: Number(data.otWages) || 0,
-      remarks: data.remarks || "",
-      totalSalary: Number(data.totalSalary) || 0,
-      netSalary: Number(data.netSalary) || 0,
-      balance: Number(data.balance) || 0,
-      createdAt: toDateString(data.createdAt),
-      updatedAt: toDateString(data.updatedAt),
-      mestri: data.mestri || defaultMestri,
-    } as PayrollData;
-  });
 };
 
 export const savePayroll = async (

@@ -25,17 +25,16 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthChange, onAddEmployee, onAddMestri, statusFilter, onStatusFilterChange, activeView, theme, onThemeToggle, searchTerm = '', onSearchChange, onExport }) => {
   // Calculate min/max year/month for picker
   const now = new Date();
-  const minYear = now.getFullYear();
-  const minMonth = now.getMonth() + 1;
-  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, 1);
-  const maxYear = maxDate.getFullYear();
-  const maxMonth = maxDate.getMonth() + 1;
+  const minYear = now.getFullYear() - 5;
+  const minMonth = 1;
+  const maxYear = now.getFullYear() + 5;
+  const maxMonth = 12;
   const titles: Record<string, { title: string, subtitle: string }> = {
     'Payroll': { title: 'Payroll Management', subtitle: `Manage and track employee payroll for ${currentMonth}.` },
     'Employees': { title: 'Employee Management', subtitle: 'View and manage employee details.' },
-    'Mestris': { title: 'Mestris Management', subtitle: 'View and manage mestri details.'},
+    'Mestris': { title: 'Mestris Management', subtitle: 'View and manage mestri details.' },
     'Dashboard': { title: 'Dashboard', subtitle: '' },
-        'Settings': { title: 'Settings', subtitle: 'Configure application settings.' },
+    'Settings': { title: 'Settings', subtitle: 'Configure application settings.' },
   };
 
   const currentViewInfo = titles[activeView] || { title: 'Dashboard', subtitle: '' };
@@ -43,27 +42,27 @@ export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthCha
   const getActionBuutton = () => {
     let text: string | null = null;
     let action: (() => void) | null = null;
-    
+
     if (activeView === 'Employees') {
-        text = 'Add Employee';
-        action = onAddEmployee;
+      text = 'Add Employee';
+      action = onAddEmployee;
     } else if (activeView === 'Mestris') {
-        text = 'Add Mestri';
-        action = onAddMestri;
+      text = 'Add Mestri';
+      action = onAddMestri;
     }
 
     if (!text || !action) {
-        return null;
+      return null;
     }
 
     return (
-        <button 
-          onClick={action}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          <PlusIcon className="w-5 h-5" />
-          <span>{text}</span>
-        </button>
+      <button
+        onClick={action}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      >
+        <PlusIcon className="w-5 h-5" />
+        <span>{text}</span>
+      </button>
     );
   };
 
@@ -85,18 +84,18 @@ export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthCha
           <option value={EmployeeStatus.Left}>Left</option>
         </select>
         {activeView === 'Payroll' && (
-  <div className="w-full max-w-2xl">
-    <YearMonthPicker
-      year={parseInt(currentMonth.split('-')[0], 10)}
-      month={parseInt(currentMonth.split('-')[1], 10)}
-      onChange={(year, month) => onMonthChange(`${year}-${month.toString().padStart(2, '0')}`)}
-      minYear={minYear}
-      maxYear={maxYear}
-      minMonth={minMonth}
-      maxMonth={maxMonth}
-    />
-  </div>
-)}
+          <div className="w-full max-w-2xl">
+            <YearMonthPicker
+              year={parseInt(currentMonth.split('-')[0], 10)}
+              month={parseInt(currentMonth.split('-')[1], 10)}
+              onChange={(year, month) => onMonthChange(`${year}-${month.toString().padStart(2, '0')}`)}
+              minYear={minYear}
+              maxYear={maxYear}
+              minMonth={minMonth}
+              maxMonth={maxMonth}
+            />
+          </div>
+        )}
         {activeView === 'Payroll' && (
           <input
             type="text"
@@ -107,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthCha
           />
         )}
         {activeView === 'Payroll' && (
-          <button 
+          <button
             onClick={() => onExport && onExport()}
             className="p-2 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             aria-label="Export data"

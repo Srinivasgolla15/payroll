@@ -23,15 +23,33 @@ export const calculatePayroll = (data: PayrollData): PayrollData => {
   const lastMonth = Number((data as any).lastMonth) || 0;
   const advance = Number(data.advance) || 0;
   const others = Number(data.others) || 0;
-  const totalDeductions = ph + bus + food + eb + shoes + karcha + lastMonth + advance + others;
+  // Calculate total deductions (exclude PH as it's already added to salary)
+  const totalDeductions = bus + food + eb + shoes + karcha + lastMonth + advance + others;
+  
+  // Create a new object with the updated deductions value
+  const updatedData = {
+    ...data,
+    deductions: totalDeductions
+  };
+  
+  // Debug logs
+  // console.log('PH value:', ph);
+  // console.log('Base salary:', totalDuties * perDay);
+  // console.log('PH addition:', ph * 497.65);
+  // console.log('Total salary:', totalSalary);
+  // console.log('Total deductions:', totalDeductions);
+  // console.log('Bonus:', Number(data.bonus) || 0);
+  
   const payment = totalSalary + (Number(data.bonus) || 0) - totalDeductions;
   const balance = payment - (Number(data.cash) || 0);
   const paid = data.paid || false;
   const remarks = data.remarks || "";
   const status = paid ? PaymentStatus.Paid : (balance <= 0 ? PaymentStatus.Unpaid : PaymentStatus.Pending);
+  
+  // console.log('Final payment:', payment);
 
   return {
-    ...data,
+    ...updatedData,
     totalDuties,
     salary,
     // otWages,

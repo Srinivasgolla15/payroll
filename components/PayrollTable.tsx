@@ -95,15 +95,19 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, onUpdateEmploy
 
   const formatValue = (key: keyof PayrollData | 'ph' | 'bus' | 'food' | 'eb' | 'shoes' | 'karcha' | 'lastMonth' | 'remarks', value: any) => {
     if (value === undefined || value === null) {
-      if (['duties', 'ot', 'totalDuties', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'advance', 'cash', 'perDayWage', 'totalSalary', 'totalPayment', 'balance'].includes(key)) {
+      if (['duties', 'ot', 'totalDuties', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'advance', 'cash', 'perDayWage', 'totalSalary', 'totalPayment', 'balance'].includes(key)) {
         return '0';
       }
       if (key === 'remarks') return '';
       return '-';
     }
-    if (['salary', 'otWages', 'totalSalary', 'netSalary', 'balance', 'advance', 'pf', 'esi', 'tds', 'others', 'bonus', 'cash', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'perDayWage'].includes(key)) {
+    if (['salary', 'otWages', 'totalSalary', 'netSalary', 'balance', 'advance', 'pf', 'esi', 'tds', 'others', 'bonus', 'cash', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'perDayWage'].includes(key)) {
       const num = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
       return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(num);
+    }
+    if (key === 'ph') {
+      const num = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+      return num.toString();
     }
     if (key === 'mestri') {
       if (typeof value === 'object' && value !== null) return value.name || value.mestriId || '';
