@@ -425,7 +425,7 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
           <button
             type="button"
             onClick={() => setShowManualEntryModal(true)}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center whitespace-nowrap text-sm"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center whitespace-nowrap text-sm"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

@@ -184,7 +184,7 @@ const Dashboard: React.FC = () => {
 
   const handleUpdateEmployee = useCallback((updatedEmployee: PayrollData | LastEmployeeData) => {
     // Handle both PayrollData and LastEmployeeData types
-    const empId = (updatedEmployee as any).empId || updatedEmployee.employeeId;
+    const empId = (updatedEmployee as any).empId || (updatedEmployee as any).employeeId;
     const { cashOrAccount, ...employeeData } = updatedEmployee as any;
     // Decide target collection based on month
     const now = new Date();
@@ -449,6 +449,152 @@ const Dashboard: React.FC = () => {
             }}
           />
           <div className="flex-1 flex flex-col overflow-hidden mt-4">
+            {activeMenu === 'Dashboard' && (
+              <div className="flex-1 overflow-auto pr-2">
+                {/* Dashboard Overview */}
+                <div className="space-y-6">
+                  {/* Welcome Section */}
+                  <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 text-white">
+                    <h2 className="text-2xl font-bold mb-2">Welcome to Payroll Management</h2>
+                    <p className="text-blue-100">Manage your employees, mestris, and payroll efficiently</p>
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Total Employees */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Total Employees</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{filteredMasterEmployees.length}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Total Mestris */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Total Mestris</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{normalizedMestris.length}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Month Payroll */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Current Month</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{currentMonth}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Active Status */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Active Employees</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                            {filteredMasterEmployees.filter(emp => emp.status === 'active' || emp.status === 'Active').length}
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Quick Actions</h3>
+                      <div className="space-y-3">
+                        <button
+                          onClick={() => dispatch(setAddEmployeeModalOpen(true))}
+                          className="w-full flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                        >
+                          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          <span className="text-slate-700 dark:text-slate-300">Add New Employee</span>
+                        </button>
+                        <button
+                          onClick={() => dispatch(setAddMestriModalOpen(true))}
+                          className="w-full flex items-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                        >
+                          <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          <span className="text-slate-700 dark:text-slate-300">Add New Mestri</span>
+                        </button>
+                        <button
+                          onClick={() => dispatch(setActiveMenu('Payroll'))}
+                          className="w-full flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                        >
+                          <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          <span className="text-slate-700 dark:text-slate-300">View Payroll</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Recent Activity</h3>
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                              System initialized successfully
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                              {filteredMasterEmployees.length} employees loaded
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                              {normalizedMestris.length} mestris loaded
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {activeMenu === 'Payroll' && (
               <div className="flex-1 overflow-auto pr-2">
                 <PayrollTable
