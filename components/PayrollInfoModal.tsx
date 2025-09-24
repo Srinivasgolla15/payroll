@@ -1,7 +1,8 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Employee, PayrollData } from '../src/types/firestore';
+import { Employee } from '../src/types/firestore';
 import { LastEmployeeData } from '../services/lastEmployeeService';
+import { useAppSelector } from '../redux/hooks';
 
 interface PayrollInfoModalProps {
   row: LastEmployeeData;
@@ -10,6 +11,8 @@ interface PayrollInfoModalProps {
 }
 
 export const PayrollInfoModal: React.FC<PayrollInfoModalProps> = ({ row, employee, onClose }) => {
+  const mestris = useAppSelector(s => s.mestri.list);
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return '-';
     try {
@@ -27,6 +30,15 @@ export const PayrollInfoModal: React.FC<PayrollInfoModalProps> = ({ row, employe
       currency: 'INR',
       minimumFractionDigits: 2
     }).format(isNaN(num) ? 0 : num);
+  };
+
+  const resolveMestriName = (mestriId?: string | null, mestri?: any): string => {
+    if (mestri && typeof mestri === 'object') {
+      return mestri?.name || mestri?.mestriId || '-';
+    }
+    if (!mestriId) return '-';
+    const m = mestris.find((x: any) => x.mestriId === mestriId || x.id === mestriId);
+    return m?.name || mestriId || '-';
   };
 
   return createPortal(
@@ -212,9 +224,7 @@ export const PayrollInfoModal: React.FC<PayrollInfoModalProps> = ({ row, employe
                 <div className="flex justify-between">
                   <p className="text-sm text-gray-600">Mestri</p>
                   <p className="text-sm font-medium">
-                    {typeof row.mestri === 'object' && row.mestri !== null
-                      ? (row.mestri as any)?.name || (row.mestri as any)?.mestriId || '-'
-                      : String(row.mestri || '-')}
+                    {resolveMestriName((row as any).mestriId, (row as any).mestri)}
                   </p>
                 </div>
                 <div className="flex justify-between">

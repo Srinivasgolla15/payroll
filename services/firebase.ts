@@ -76,11 +76,29 @@ export const getMestriById = async (id: string): Promise<Mestri | null> => {
   }
 };
 
-const mapMestriDoc = (doc: QueryDocumentSnapshot<DocumentData>): Mestri => {
-  const data = doc.data();
+// Fetch mestri by either Firestore document id or business mestriId field
+export const getMestriByAnyId = async (idOrBusinessId: string): Promise<Mestri | null> => {
+  if (!idOrBusinessId) return null;
+  // Try as document id first
+  const byDoc = await getMestriById(idOrBusinessId);
+  if (byDoc) return byDoc;
+  // Fallback: query by business mestriId field
+  try {
+    const qy = query(mestrisRef, where('mestriId', '==', idOrBusinessId));
+    const snap = await getDocs(qy);
+    const first = snap.docs[0];
+    return first ? mapMestriDoc(first as any) : null;
+  } catch (e) {
+    console.warn('getMestriByAnyId failed:', e);
+    return null;
+  }
+};
+
+const mapMestriDoc = (docSnap: any): Mestri => {
+  const data = docSnap.data();
   return {
-    id: doc.id,
-    mestriId: data.mestriId || doc.id,
+    id: (docSnap as any).id,
+    mestriId: data.mestriId || (docSnap as any).id,
     name: data.name || "",
     phoneNumber: data.phoneNumber || "",
     createdAt: toDateString(data.createdAt),
@@ -192,12 +210,12 @@ export const updateEmployee = async (
 
 /* --------------------- PAYROLL --------------------- */
 // Helper function to map a document to PayrollData
-export const mapPayrollDoc = async (doc: QueryDocumentSnapshot): Promise<PayrollData> => {
-  const data = doc.data();
+export const mapPayrollDoc = async (snap: QueryDocumentSnapshot): Promise<PayrollData> => {
+  const data = snap.data();
   const now = new Date().toISOString();
   const employeeId = data.employeeId || data.empId || ''; // Try both employeeId and empId
 
-  console.log('Firebase - mapPayrollDoc called with:', doc.id);
+  console.log('Firebase - mapPayrollDoc called with:', snap.id);
   console.log('Firebase - data.remarks:', data.remarks);
   console.log('Firebase - data.mestri:', data.mestri);
   console.log('Firebase - data keys:', Object.keys(data));
@@ -217,11 +235,12 @@ export const mapPayrollDoc = async (doc: QueryDocumentSnapshot): Promise<Payroll
 
   // Get mestri data if available
   let mestriData: Mestri | null = null;
-  if (employeeData.mestriId) {
+  const effectiveMestriId = (data as any).mestriId || employeeData.mestriId || '';
+  if (effectiveMestriId) {
     try {
-      mestriData = await getMestriById(employeeData.mestriId);
+      mestriData = await getMestriByAnyId(effectiveMestriId);
     } catch (error) {
-      console.warn(`Could not fetch mestri data for ${employeeData.mestriId}:`, error);
+      console.warn(`Could not fetch mestri data for ${effectiveMestriId}:`, error);
     }
   }
 
@@ -235,9 +254,9 @@ export const mapPayrollDoc = async (doc: QueryDocumentSnapshot): Promise<Payroll
   };
 
   const result = {
-    id: doc.id,
+    id: snap.id,
     employeeId,
-    mestriId: employeeData.mestriId || "",
+    mestriId: effectiveMestriId,
     month: data.month || "",
     name: employeeData.name || data.name || "",
     empId: employeeData.empId || data.empId || employeeId,
@@ -318,8 +337,8 @@ export const getPayrolls = async (
       const snapshot = await getDocs(q);
       const filteredPromises: Promise<PayrollData>[] = [];
       
-      for (const doc of snapshot.docs) {
-        const data = doc.data() as { employeeId?: string };
+      for (const d of snapshot.docs) {
+        const data = d.data() as { employeeId?: string };
         const employeeId = data.employeeId;
         
         if (employeeId) {
@@ -328,7 +347,7 @@ export const getPayrolls = async (
             if (employeeDoc.exists()) {
               const employeeData = employeeDoc.data() as { mestriId?: string };
               if (employeeData?.mestriId === filter.mestriId) {
-                filteredPromises.push(mapPayrollDoc(doc as any));
+                filteredPromises.push(mapPayrollDoc(d as any));
               }
             }
           } catch (error) {
@@ -342,7 +361,7 @@ export const getPayrolls = async (
     
     // No mestriId filter, just fetch all matching month
     const snapshot = await getDocs(q);
-    return Promise.all(snapshot.docs.map(doc => mapPayrollDoc(doc as any)));
+    return Promise.all(snapshot.docs.map(d => mapPayrollDoc(d as any)));
   } catch (error) {
     console.error('Error in getPayrolls:', error);
     throw error;

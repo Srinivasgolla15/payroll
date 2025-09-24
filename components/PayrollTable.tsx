@@ -192,10 +192,11 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
 
       // If we're updating the mestri field, we need to update the mestriId
       if (key === 'mestri') {
-        // Find the mestri by name to get the ID
-        const mestri = employees.find(e => e.name === value);
-        if (mestri) {
-          updatedRow.mestriId = mestri.id || mestri.mestriId || '';
+        // Resolve mestri by name using mestri slice
+        const m = mestris.find((x: any) => x.name === value || x.mestriId === value || x.id === value);
+        if (m) {
+          updatedRow.mestriId = (m as any).mestriId || (m as any).id || '';
+          (updatedRow as any).mestri = m.name;
         }
       }
 
