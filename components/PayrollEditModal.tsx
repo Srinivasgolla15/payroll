@@ -1,16 +1,27 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { PayrollData, Mestri, PaymentStatus, PaymentMethod } from '../src/types/firestore';
+import { LastEmployeeData } from '../services/lastEmployeeService';
+import { getMestris } from '../services/firebase';
+import { Mestri } from '../src/types/firestore';
 import { useAppSelector } from '../redux/hooks';
 
+// Define local enums to avoid importing from firestore types
+enum PaymentStatus {
+  Paid = 'Paid',
+  Unpaid = 'Unpaid',
+  Partial = 'Partial'
+}
+
+type PaymentMethod = 'cash' | 'bank_transfer' | 'upi';
+
 interface PayrollEditModalProps {
-  row: PayrollData;
+  row: LastEmployeeData;
   onClose: () => void;
-  onSave: (updated: PayrollData) => void;
+  onSave: (updated: LastEmployeeData) => void;
 }
 
 export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose, onSave }) => {
-  const [form, setForm] = useState<PayrollData>(() => ({
+  const [form, setForm] = useState<LastEmployeeData>(() => ({
     ...row,
     duties: row.duties ?? 0,
     ot: row.ot ?? 0,
@@ -24,81 +35,145 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
     karcha: row.karcha ?? 0,
     lastMonth: row.lastMonth ?? 0,
     cash: row.cash ?? 0,
-    remarks: row.remarks ?? "",
-    status: row.status ?? PaymentStatus.Pending,
+    others: row.others ?? 0,
+    salary: row.salary ?? 0,
+    totalSalary: row.totalSalary ?? 0,
+    netSalary: row.netSalary ?? 0,
+    deductions: row.deductions ?? 0,
     paid: row.paid ?? false,
-    cashOrAccount: row.cashOrAccount ?? PaymentMethod.Cash,
+    status: row.status ?? 'Unpaid',
+    dailyWage: row.dailyWage ?? 0,
+    totalDuties: row.totalDuties ?? 0,
+    otWages: row.otWages ?? 0,
+    balance: row.balance ?? 0,
     accountNumber: row.accountNumber ?? "",
     ifsc: row.ifsc ?? "",
     bankHolderName: row.bankHolderName ?? "",
     bankName: row.bankName ?? "",
+    mestri: typeof row.mestri === 'object' && row.mestri !== null
+      ? (row.mestri as any)?.name || (row.mestri as any)?.mestriId || ""
+      : String(row.mestri || ""),
+    mestriId: (row as any).mestriId || "",
+    remarks: (row as any).remarks || "",
+    cashOrAccount: row.cashOrAccount ?? "Cash",
   }));
-  const mestris = useAppSelector(s => s.mestri.list) as unknown as Mestri[];
 
-  const numericKeys: (keyof PayrollData | 'ph' | 'bus' | 'food' | 'eb' | 'shoes' | 'karcha' | 'lastMonth')[] = useMemo(() => [
-    'duties', 'ot', 'advance', 'cash', 'perDayWage', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth'
-  ], []);
+  // Add state for mestris dropdown
+  const [mestris, setMestris] = useState<Mestri[]>([]);
+  const [mestrisLoading, setMestrisLoading] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const key = name as keyof PayrollData;
-    
-    // Don't process if the value hasn't actually changed
-    if ((form as any)[key]?.toString() === value) {
-      return;
-    }
-    
+  // Fetch mestris on component mount
+  useEffect(() => {
+    const fetchMestris = async () => {
+      setMestrisLoading(true);
+      try {
+        const mestriList = await getMestris();
+        setMestris(mestriList);
+      } catch (error) {
+        console.error('Error fetching mestris:', error);
+      } finally {
+        setMestrisLoading(false);
+      }
+    };
+
+    fetchMestris();
+  }, []);
+
+  const numericKeys: (keyof LastEmployeeData)[] = useMemo(() => [
+    'duties', 'ot', 'advance', 'cash', 'perDayWage', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'others', 'salary', 'totalSalary', 'netSalary', 'deductions', 'dailyWage', 'totalDuties', 'otWages', 'balance'
+  ] as const, []);
+
+  const calculateTotals = (data: LastEmployeeData) => {
+    const duties = data.duties || 0;
+    const ot = data.ot || 0;
+    const perDayWage = data.perDayWage || 0;
+    const ph = data.ph || 0;
+    const bus = data.bus || 0;
+    const food = data.food || 0;
+    const eb = data.eb || 0;
+    const shoes = data.shoes || 0;
+    const karcha = data.karcha || 0;
+    const lastMonth = data.lastMonth || 0;
+    const advance = data.advance || 0;
+    const others = data.others || 0;
+
+    const totalDuties = duties + ot;
+    const salary = totalDuties * perDayWage + (ph * 497.65);
+    const totalSalary = salary;
+    const deductions = bus + food + eb + shoes + karcha + lastMonth + advance + others;
+    const netSalary = totalSalary - deductions;
+    const balance = netSalary - (data.cash || 0);
+
+    return {
+      totalDuties,
+      salary,
+      totalSalary,
+      deductions,
+      netSalary,
+      balance,
+      paid: balance <= 0,
+      status: balance <= 0 ? 'Paid' : 'Unpaid' as const,
+      otWages: (ot * perDayWage * 1.5) || 0,
+      dailyWage: perDayWage
+    };
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target as HTMLInputElement;
+
     setForm(prev => {
-      const next: PayrollData = {
+      const newValue = type === 'number' ? (value === '' ? '' : Number(value)) : value;
+      return {
         ...prev,
-        [key]: numericKeys.includes(key) ? (value === '' ? 0 : parseFloat(value) || 0) : (value as any),
-      } as PayrollData;
-      // Auto calculations
-      const duties = Number(next.duties) || 0;
-      const ot = Number(next.ot) || 0;
-      const ph = Number((next as any).ph) || 0;
-      const perDay = Number(next.perDayWage) || 0;
-      
-      // Calculate regular salary (duties + OT, excluding PH)
-      const regularDuties = duties + ot;
-      const regularSalary = regularDuties * perDay;
-      
-      // Calculate PH pay (PH days * 497.65)
-      const phPay = ph * 497.65;
-      
-      // Total salary is regular salary + PH pay
-      const salary = regularSalary + phPay;
-      
-      // Calculate total duties for display (regular + PH)
-      next.totalDuties = regularDuties + ph;
-      next.salary = salary;
-      next.totalSalary = salary;
-      
-      // Calculate deductions (exclude PH from deductions)
-      const bus = Number((next as any).bus) || 0;
-      const food = Number((next as any).food) || 0;
-      const eb = Number((next as any).eb) || 0;
-      const shoes = Number((next as any).shoes) || 0;
-      const karcha = Number((next as any).karcha) || 0;
-      const lastMonth = Number((next as any).lastMonth) || 0;
-      const advance = Number(next.advance) || 0;
-      const others = Number(next.others) || 0;
-      
-      // Calculate total deductions (exclude PH)
-      const deductions = bus + food + eb + shoes + karcha + lastMonth + advance + others;
-      next.deductions = deductions;
-      
-      // Calculate final payment
-      next.totalPayment = salary + (Number(next.bonus) || 0) - deductions;
-      next.netSalary = next.totalPayment;
-      next.balance = next.totalPayment - (Number(next.cash) || 0);
-      return next;
+        [name]: newValue
+      };
     });
+  };
+
+  const handleMestriChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedMestriId = e.target.value;
+    const selectedMestri = mestris.find(m => m.mestriId === selectedMestriId);
+
+    setForm(prev => ({
+      ...prev,
+      mestriId: selectedMestriId,
+      mestri: selectedMestri ? selectedMestri.name : selectedMestriId
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ ...form });
+    // Ensure all numeric fields are properly converted to numbers
+    const updatedForm: LastEmployeeData = {
+      ...form,
+      duties: Number(form.duties) || 0,
+      ot: Number(form.ot) || 0,
+      perDayWage: Number(form.perDayWage) || 0,
+      advance: Number(form.advance) || 0,
+      ph: Number(form.ph) || 0,
+      bus: Number(form.bus) || 0,
+      food: Number(form.food) || 0,
+      eb: Number(form.eb) || 0,
+      shoes: Number(form.shoes) || 0,
+      karcha: Number(form.karcha) || 0,
+      lastMonth: Number(form.lastMonth) || 0,
+      cash: Number(form.cash) || 0,
+      others: Number(form.others) || 0,
+      salary: Number(form.salary) || 0,
+      totalSalary: Number(form.totalSalary) || 0,
+      netSalary: Number(form.netSalary) || 0,
+      deductions: Number(form.deductions) || 0,
+      dailyWage: Number(form.dailyWage) || 0,
+      totalDuties: Number(form.totalDuties) || 0,
+      otWages: Number(form.otWages) || 0,
+      balance: Number(form.balance) || 0,
+      paid: form.balance ? form.balance <= 0 : false,
+      status: form.balance ? (form.balance <= 0 ? 'Paid' : 'Unpaid') : 'Unpaid',
+      // Ensure mestriId is included
+      mestriId: form.mestriId || '',
+      remarks: form.remarks || '',
+    };
+    onSave(updatedForm);
   };
 
   return createPortal(
@@ -154,23 +229,6 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
                   onChange={handleChange}
                   className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label htmlFor="mestriId" className="block text-sm font-medium text-gray-700">Mestri</label>
-                <select
-                  id="mestriId"
-                  name="mestriId"
-                  value={form.mestriId}
-                  onChange={(e) => setForm(prev => ({ ...prev, mestriId: e.target.value }))}
-                  className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
-                >
-                  {mestris.map(m => (
-                    <option key={m.id} value={m.mestriId || m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <div className="space-y-1">
@@ -307,27 +365,37 @@ export const PayrollEditModal: React.FC<PayrollEditModalProps> = ({ row, onClose
                 />
               </div>
               <div className="space-y-1">
-                <label htmlFor="paid" className="block text-sm font-medium text-slate-700">Payment Status</label>
+                <label htmlFor="mestri" className="block text-sm font-medium text-slate-700">Mestri</label>
                 <select
-                  id="paid"
-                  name="paid"
-                  value={form.paid ? 'paid' : 'unpaid'}
-                  onChange={(e) => setForm(prev => ({ ...prev, paid: e.target.value === 'paid' }))}
-                  className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
+                  id="mestri"
+                  name="mestri"
+                  value={form.mestriId || ''}
+                  onChange={handleMestriChange}
+                  disabled={mestrisLoading}
+                  className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
-                  <option value="unpaid">Unpaid</option>
-                  <option value="paid">Paid</option>
+                  <option value="">Select Mestri</option>
+                  {mestris.map((mestri) => (
+                    <option key={mestri.mestriId} value={mestri.mestriId}>
+                      {mestri.name}  
+                    </option>
+                  ))}
                 </select>
+                {mestrisLoading && (
+                  <p className="text-xs text-gray-500 mt-1">Loading mestris...</p>
+                )}
               </div>
+
               <div className="space-y-1">
-                <label htmlFor="remarks" className="block text-sm font-medium text-slate-700 ">Remarks</label>
-                <input
-                  type="text"
+                <label htmlFor="remarks" className="block text-sm font-medium text-slate-700">Remarks</label>
+                <textarea
                   id="remarks"
                   name="remarks"
-                  value={form.remarks}
+                  value={form.remarks || ''}
                   onChange={handleChange}
-                  className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors"
+                  rows={3}
+                  className="mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm transition-colors resize-none"
+                  placeholder="Enter any remarks or notes..."
                 />
               </div>
             </div>

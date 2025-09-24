@@ -1,7 +1,9 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { RootState } from '../store';
+import { addDoc, collection } from 'firebase/firestore';
 import { PayrollData, PaymentMethod, PaymentStatus, Employee } from '../../src/types/firestore';
 import { getPayrolls as getFirebasePayrolls, savePayroll as saveFirebasePayroll } from '../../services/payrollService';
+import { db } from '@/services/firebase';
 
 interface PayrollState {
   payrollDataByMonth: { [month: string]: PayrollData[] };
@@ -165,10 +167,18 @@ export const createDefaultPayroll = createAsyncThunk<PayrollData, { employee: Em
   'payroll/createDefaultPayroll',
   async ({ employee, month }, { rejectWithValue }) => {
     try {
+      console.log('PayrollSlice - createDefaultPayroll called with:', { employee, month });
+      console.log('PayrollSlice - Employee mestriId:', employee.mestriId);
+      console.log('PayrollSlice - Employee id:', employee.id);
+      console.log('PayrollSlice - Employee empId:', employee.empId);
+
+      const collectionRef = collection(db, 'payroll');
       const employeeId = employee.empId; // For display and id consistency
       const mestriId = employee.mestriId;
+      console.log('PayrollSlice - Using mestriId:', mestriId);
+
       const defaultPayroll: PayrollData = {
-        id: `${employeeId}_${month}`,
+        // id: `${employeeId}_${month}`,
         employeeId,
         mestriId,
         month,
@@ -185,6 +195,7 @@ export const createDefaultPayroll = createAsyncThunk<PayrollData, { employee: Em
         status: PaymentStatus.Pending,
         basic: 0,
         dailyWage: 0,
+        mestri: employee.mestriId,
         perDayWage: Number(employee.perDayWage) || 0,
         duties: 0,
         ot: 0,
@@ -219,8 +230,12 @@ export const createDefaultPayroll = createAsyncThunk<PayrollData, { employee: Em
         createdAt: new Date().toISOString(),
         remarks: '',
       };
-      return await saveFirebasePayroll(defaultPayroll);
+      console.log('PayrollSlice - Default payroll being saved:', defaultPayroll);
+      const result = await saveFirebasePayroll(defaultPayroll);
+      console.log('PayrollSlice - Default payroll saved successfully:', result);
+      return result;
     } catch (error: any) {
+      console.error('PayrollSlice - Error creating default payroll:', error);
       return rejectWithValue(error.message || 'Failed to create payroll');
     }
   }

@@ -68,7 +68,6 @@ export const calculatePayroll = (data: PayrollData): PayrollData => {
 export const createDefaultPayroll = (employee: Employee, month: string): PayrollData => {
   const now = new Date().toISOString();
   return {
-    id: `${employee.empId}_${month}`,
     employeeId: employee.empId,
     mestriId: employee.mestriId || '',
     month,

@@ -1,9 +1,10 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Employee, PayrollData } from '../src/types/firestore';
+import { LastEmployeeData } from '../services/lastEmployeeService';
 
 interface PayrollInfoModalProps {
-  row: PayrollData;
+  row: LastEmployeeData;
   employee: Employee | null;
   onClose: () => void;
 }
@@ -209,8 +210,16 @@ export const PayrollInfoModal: React.FC<PayrollInfoModalProps> = ({ row, employe
 
                 </div>
                 <div className="flex justify-between">
+                  <p className="text-sm text-gray-600">Mestri</p>
+                  <p className="text-sm font-medium">
+                    {typeof row.mestri === 'object' && row.mestri !== null
+                      ? (row.mestri as any)?.name || (row.mestri as any)?.mestriId || '-'
+                      : String(row.mestri || '-')}
+                  </p>
+                </div>
+                <div className="flex justify-between">
                   <p className="text-sm text-gray-600">Remarks</p>
-                  <p className="text-sm font-medium">{ row.remarks || '-'}</p>
+                  <p className="text-sm font-medium">{(row as any).remarks || '-'}</p>
                 </div>
               </div>
             </div> 

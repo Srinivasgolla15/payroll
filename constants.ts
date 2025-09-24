@@ -26,7 +26,7 @@ export const RESETTABLE_PAYROLL_FIELDS: Omit<PayrollData, keyof MasterEmployee |
     balance: 0,
 };
 
-export const PAYROLL_COLUMNS: { key: keyof PayrollData | 'placeholder' | 'ph' | 'bus' | 'food' | 'eb' | 'shoes' | 'karcha' | 'lastMonth' | 'totalPayment', label: string, editable?: boolean, isNumeric?: boolean }[] = [
+export const PAYROLL_COLUMNS: { key: keyof PayrollData | 'placeholder' | 'ph' | 'bus' | 'food' | 'eb' | 'shoes' | 'karcha' | 'lastMonth' | 'totalPayment' | 'remarks', label: string, editable?: boolean, isNumeric?: boolean }[] = [
     { key: 'sNo', label: 'S.No', isNumeric: true },
     { key: 'name', label: 'Name' },
     { key: 'empId', label: 'EMP ID' },
@@ -51,4 +51,5 @@ export const PAYROLL_COLUMNS: { key: keyof PayrollData | 'placeholder' | 'ph' | 
     { key: 'balance', label: 'Balance', isNumeric: true },
     { key: 'cashOrAccount', label: 'Cash/Account', editable: true },
     { key: 'paid', label: 'Paid', editable: true },
+    { key: 'remarks', label: 'Remarks', editable: true },
 ];

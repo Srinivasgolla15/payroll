@@ -147,25 +147,33 @@ export const getEmployees = async (
 export const addEmployee = async (
   employeeData: Partial<Employee>
 ): Promise<Employee> => {
-  const docRef = doc(employeesRef);
-  const now = new Date().toISOString();
-  const newEmployee: Employee = {
-    id: docRef.id,
-    empId: employeeData.empId || docRef.id,
-    name: employeeData.name || "",
-    phoneNumber: employeeData.phoneNumber || "",
-    bankHolderName: employeeData.bankHolderName || "",
-    ifsc: employeeData.ifsc || "",
-    accountNumber: employeeData.accountNumber || "",
-    status: employeeData.status || EmployeeStatus.Active,
-    joiningDate: employeeData.joiningDate || new Date().toISOString().split("T")[0],
-    mestriId: employeeData.mestriId || "",
-    perDayWage: Number(employeeData.perDayWage) || 0,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await setDoc(docRef, newEmployee);
-  return newEmployee;
+  try {
+    // Always auto-generate document ID, never use empId as document ID
+    const docRef = doc(employeesRef);
+
+    // Generate empId if not provided (but don't use it as document ID)
+    const empId = employeeData.empId || docRef.id;
+
+    const now = new Date().toISOString();
+    const employeeWithTimestamps = {
+      ...employeeData,
+      empId, // Store empId as data field, not as document ID
+      dept: employeeData.dept || 'General', // Add default department
+      status: employeeData.status || 'active',
+      createdAt: employeeData.createdAt || now,
+      updatedAt: now,
+    };
+
+    await setDoc(docRef, employeeWithTimestamps);
+
+    return {
+      id: docRef.id, // Return the auto-generated document ID
+      ...employeeWithTimestamps
+    } as Employee;
+  } catch (error) {
+    console.error('Error adding employee:', error);
+    throw error;
+  }
 };
 
 export const updateEmployee = async (
@@ -184,11 +192,16 @@ export const updateEmployee = async (
 
 /* --------------------- PAYROLL --------------------- */
 // Helper function to map a document to PayrollData
-const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
+export const mapPayrollDoc = async (doc: QueryDocumentSnapshot): Promise<PayrollData> => {
   const data = doc.data();
   const now = new Date().toISOString();
-  const employeeId = data.employeeId || '';
-  
+  const employeeId = data.employeeId || data.empId || ''; // Try both employeeId and empId
+
+  console.log('Firebase - mapPayrollDoc called with:', doc.id);
+  console.log('Firebase - data.remarks:', data.remarks);
+  console.log('Firebase - data.mestri:', data.mestri);
+  console.log('Firebase - data keys:', Object.keys(data));
+
   // Get employee data
   let employeeData: any = {};
   try {
@@ -201,7 +214,7 @@ const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
   } catch (error) {
     console.warn(`Could not fetch employee data for ${employeeId}:`, error);
   }
-  
+
   // Get mestri data if available
   let mestriData: Mestri | null = null;
   if (employeeData.mestriId) {
@@ -211,7 +224,7 @@ const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
       console.warn(`Could not fetch mestri data for ${employeeData.mestriId}:`, error);
     }
   }
-  
+
   const defaultMestri: Mestri = {
     id: employeeData.mestriId || "",
     mestriId: employeeData.mestriId || "",
@@ -220,8 +233,8 @@ const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
     createdAt: now,
     updatedAt: now,
   };
-  
-  return {
+
+  const result = {
     id: doc.id,
     employeeId,
     mestriId: employeeData.mestriId || "",
@@ -255,7 +268,7 @@ const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
     cash: Number(data.cash) || 0,
     cashOrAccount: data.cashOrAccount === PaymentMethod.Account ? PaymentMethod.Account : PaymentMethod.Cash,
     paid: Boolean(data.paid),
-    status: data.status === PaymentStatus.Paid ? PaymentStatus.Paid : 
+    status: data.status === PaymentStatus.Paid ? PaymentStatus.Paid :
             data.status === PaymentStatus.Unpaid ? PaymentStatus.Unpaid : PaymentStatus.Pending,
     accountNumber: employeeData.accountNumber || data.accountNumber || "",
     ifsc: employeeData.ifsc || data.ifsc || "",
@@ -270,7 +283,21 @@ const mapPayrollDoc = async (doc: any): Promise<PayrollData> => {
     createdAt: toDateString(data.createdAt || now),
     updatedAt: toDateString(data.updatedAt || now),
     mestri: mestriData || defaultMestri,
+    // Include all additional fields from the database
+    ...Object.fromEntries(
+      Object.entries(data).filter(([key]) =>
+        !['id', 'employeeId', 'mestriId', 'month', 'name', 'empId', 'dept', 'designation', 'joiningDate',
+         'basic', 'dailyWage', 'perDayWage', 'duties', 'ot', 'advance', 'ph', 'bus', 'food', 'eb',
+         'shoes', 'karcha', 'lastMonth', 'deductions', 'totalPayment', 'sNo', 'pf', 'esi', 'tds',
+         'others', 'bonus', 'cash', 'cashOrAccount', 'paid', 'status', 'accountNumber', 'ifsc',
+         'bankName', 'bankHolderName', 'totalDuties', 'salary', 'otWages', 'totalSalary',
+         'netSalary', 'balance', 'createdAt', 'updatedAt'].includes(key)
+      )
+    )
   };
+
+  console.log('Firebase - mapPayrollDoc result:', result);
+  return result;
 };
 
 export const getPayrolls = async (
@@ -325,8 +352,11 @@ export const getPayrolls = async (
 export const savePayroll = async (
   payrollData: PayrollData
 ): Promise<PayrollData> => {
-  const docId = payrollData.id || `${payrollData.employeeId}_${payrollData.month}`;
-  const docRef = doc(payrollRef, docId);
+  // Use existing ID if available, otherwise let Firebase auto-generate
+  const docRef = payrollData.id
+    ? doc(payrollRef, payrollData.id)
+    : doc(payrollRef);
+
   const now = new Date().toISOString();
 
   const payrollToSave = {
@@ -351,4 +381,50 @@ export const savePayroll = async (
 
 export const deletePayroll = async (payrollId: string) => {
   await deleteDoc(doc(payrollRef, payrollId));
+};
+
+// Export the db instance and other utilities
+export { 
+  db, 
+  app,
+  analytics,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  where,
+  Timestamp,
+  type DocumentData,
+  type Query,
+  type QueryDocumentSnapshot
+};
+
+// Re-export types from the types file
+export type {
+  Employee,
+  Mestri,
+  PayrollData,
+  EmployeeStatus,
+  PaymentStatus
+} from '../src/types/firestore';
+
+// Export the employee-related functions
+export const getEmployeeById = async (id: string): Promise<Employee | null> => {
+  try {
+    const docRef = doc(collection(db, 'employees'), id);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Employee;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting employee by ID:', error);
+    throw error;
+  }
 };

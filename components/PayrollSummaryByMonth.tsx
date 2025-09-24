@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { PayrollData } from '../src/types/firestore';
+import { LastEmployeeData } from '../services/lastEmployeeService';
 
 interface PayrollSummaryByMonthProps {
-  payrolls: PayrollData[];
+  payrolls: LastEmployeeData[];
 }
 
 const getMonthName = (monthStr: string) => {
@@ -15,7 +15,7 @@ const getMonthName = (monthStr: string) => {
 export const PayrollSummaryByMonth: React.FC<PayrollSummaryByMonthProps> = ({ payrolls }) => {
   // Group payrolls by month
   const grouped = useMemo(() => {
-    const map: Record<string, PayrollData[]> = {};
+    const map: Record<string, LastEmployeeData[]> = {};
     payrolls.forEach((p) => {
       if (!map[p.month]) map[p.month] = [];
       map[p.month].push(p);
@@ -42,7 +42,7 @@ export const PayrollSummaryByMonth: React.FC<PayrollSummaryByMonthProps> = ({ pa
           <tbody>
             {months.map((month) => {
               const rows = grouped[month];
-              const total = rows.reduce((sum, r) => sum + (r.totalPayment || 0), 0);
+              const total = rows.reduce((sum, r) => sum + (r.netSalary || 0), 0);
               const paid = rows.filter(r => r.paid).length;
               const unpaid = rows.length - paid;
               return (

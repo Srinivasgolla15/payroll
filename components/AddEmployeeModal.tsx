@@ -74,6 +74,8 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ onClose, onA
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('AddEmployeeModal - Submitting form data:', formData);
+    console.log('AddEmployeeModal - Selected mestriId:', formData.mestriId);
     onAddEmployee(formData);
   };
 
