@@ -8,6 +8,7 @@ import { ImportFromPresentMonthModal } from './ImportFromPresentMonthModal';
 import { ManualEmployeeEntryModal } from './ManualEmployeeEntryModal';
 import { useAppSelector, useAppDispatch } from '../redux/hooks';
 import { fetchLastEmployees } from '../redux/slices/lastEmployeesSlice';
+import { LoadingSpinner, LoadingButton, Skeleton } from './ui';
 
 interface PayrollTableProps {
   data: LastEmployeeData[];
@@ -23,6 +24,7 @@ interface EditingCell {
 export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, onUpdateEmployee }) => {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
   const [updatedCell, setUpdatedCell] = useState<EditingCell | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [editRow, setEditRow] = useState<LastEmployeeData | null>(null);
@@ -167,10 +169,14 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
 
   const handleUpdate = async () => {
     if (!editingCell) return;
-
+    
+    setIsSaving(true);
     const { rowIndex, key } = editingCell;
     const row = filteredData[rowIndex];
-    if (!row) return;
+    if (!row) {
+      setIsSaving(false);
+      return;
+    }
 
     try {
       // Only parse as number if the key is in numericKeys
@@ -186,6 +192,7 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
 
       // Recalculate totals if needed
       if (isNumeric) {
+        setIsSaving(false);
         const totals = calculateTotals(updatedRow);
         Object.assign(updatedRow, totals);
       }
@@ -330,6 +337,8 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
   const handleImportComplete = () => {
     // Re-fetch lastemployees for the month so imported entries appear
     dispatch(fetchLastEmployees(currentMonth));
+    // Close the import modal
+    setShowImportModal(false);
   };
 
   const handleImport = async (selectedEmployees: LastEmployeeData[]) => {

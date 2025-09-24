@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Timestamp } from 'firebase/firestore';
 
@@ -29,6 +29,9 @@ import { updateEmployeePayroll, changeMonth, createDefaultPayroll, fetchPayrolls
 import { LastEmployeeData } from './services/lastEmployeeService';
 import { fetchLastEmployees, selectLastEmployeesByMonth, updateEmployeePayroll as updateLastEmployeePayroll } from './redux/slices/lastEmployeesSlice';
 import { useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './src/contexts/ThemeContext';
+import { LoadingOverlay } from './components/ui/LoadingSpinner';
+import { ThemeToggle } from './components/ThemeToggle';
 
 // Helper to check if a month is in the future
 const isFutureMonth = (monthString: string): boolean => {
@@ -95,6 +98,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 // Main Dashboard component (the original App logic)
 const Dashboard: React.FC = () => {
   const dispatch = useAppDispatch();
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Import employees as zeroed payroll for the selected month
   const importZeroedPayrollForMonth = async () => {
@@ -142,8 +147,7 @@ const Dashboard: React.FC = () => {
     activeMenu, 
     isAddEmployeeModalOpen, 
     isAddMestriModalOpen, 
-    statusFilter, 
-    theme 
+    statusFilter
   } = useAppSelector(state => state.ui);
 
   const masterEmployees = useAppSelector(state => state.employees.masterList); // Assume Employee[]
@@ -165,17 +169,12 @@ const Dashboard: React.FC = () => {
     dispatch(fetchLastEmployees(new Date().toISOString().slice(0, 7)) as any);
   }, [dispatch]);
 
-  // ✅ Apply theme
+  // Apply theme class on mount
   useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.remove(theme === 'dark' ? 'light' : 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const handleThemeToggle = () => {
-    dispatch(toggleTheme());
-  };
+    root.classList.remove('dark');
+    root.classList.add('light');
+  }, []);
 
   const handleMonthChange = useCallback((month: string) => {
     dispatch(changeMonth(month));
@@ -225,17 +224,18 @@ const Dashboard: React.FC = () => {
     console.log('App - handleAddEmployee called with:', newEmployeeData);
     console.log('App - Selected mestriId:', newEmployeeData.mestriId);
 
-    const employeePayload: Partial<Employee> = {
+    const employeePayload: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'> = {
       empId: newEmployeeData.empId,
       name: newEmployeeData.name,
-      phoneNumber: newEmployeeData.phoneNumber,
-      bankHolderName: newEmployeeData.bankHolderName,
-      ifsc: newEmployeeData.ifsc,
-      accountNumber: newEmployeeData.accountNumber,
-      joiningDate: newEmployeeData.joiningDate,
       mestriId: newEmployeeData.mestriId,
+      dept: 'General', // Default department
       perDayWage: Number(newEmployeeData.perDayWage) || 0,
-      status: EmployeeStatus.Active,
+      joiningDate: newEmployeeData.joiningDate,
+      ifsc: newEmployeeData.ifsc,
+      bankHolderName: newEmployeeData.bankHolderName,
+      accountNumber: newEmployeeData.accountNumber,
+      phoneNumber: newEmployeeData.phoneNumber,
+      status: EmployeeStatus.Active
     };
     console.log('App - Employee payload being sent to firebase:', employeePayload);
 
@@ -408,6 +408,27 @@ const Dashboard: React.FC = () => {
     return Array.from(employeeMap.values());
   }, [currentPayrollData, statusFilter, masterEmployees, currentMonth, lastEmployeesForMonth]);
   
+  // Resolve mestri name from id for searching
+  const getMestriNameById = useCallback((mestriId: string | undefined) => {
+    if (!mestriId) return '';
+    const m = normalizedMestris.find(m => (m as any).mestriId === mestriId || (m as any).id === mestriId);
+    return (m?.name || '').toLowerCase();
+  }, [normalizedMestris]);
+
+  // Apply search filter for Payroll view
+  const visiblePayrollData = useMemo(() => {
+    if (!payrollSearch) return processedPayrollData;
+    const q = payrollSearch.toLowerCase();
+    return processedPayrollData.filter((e: any) => {
+      const nameMatch = (e.name || '').toLowerCase().includes(q);
+      const empIdMatch = (e.empId || '').toLowerCase().includes(q);
+      const mestriFromId = getMestriNameById(e.mestriId);
+      const mestriInline = (e.mestri?.name || e.mestri || '').toLowerCase();
+      const mestriMatch = mestriFromId.includes(q) || mestriInline.includes(q);
+      return nameMatch || empIdMatch || mestriMatch;
+    });
+  }, [processedPayrollData, payrollSearch, getMestriNameById]);
+  
   const filteredMasterEmployees = useMemo(() => {
     return masterEmployees.filter(emp => statusFilter === 'All' || emp.status === statusFilter);
   }, [masterEmployees, statusFilter]);
@@ -431,21 +452,10 @@ const Dashboard: React.FC = () => {
             statusFilter={statusFilter}
             onStatusFilterChange={(status) => dispatch(setStatusFilter(status))}
             activeView={activeMenu}
-            theme={theme}
-            onThemeToggle={handleThemeToggle}
             searchTerm={payrollSearch}
             onSearchChange={setPayrollSearch}
             onExport={() => {
-              const rows = processedPayrollData.filter(e => {
-                if (!payrollSearch) return true;
-                const q = payrollSearch.toLowerCase();
-                return (
-                  e.name.toLowerCase().includes(q) ||
-                  e.empId.toLowerCase().includes(q) ||
-                  ((e as any).mestri?.name || '').toLowerCase().includes(q)
-                );
-              });
-              exportPayrollToExcel(rows, payrollSearch ? `payroll_${currentMonth}_filtered` : `payroll_${currentMonth}_all`);
+              exportPayrollToExcel(visiblePayrollData as any[], payrollSearch ? `payroll_${currentMonth}_filtered` : `payroll_${currentMonth}_all`);
             }}
           />
           <div className="flex-1 flex flex-col overflow-hidden mt-4">
@@ -598,7 +608,7 @@ const Dashboard: React.FC = () => {
             {activeMenu === 'Payroll' && (
               <div className="flex-1 overflow-auto pr-2">
                 <PayrollTable
-                  data={processedPayrollData}
+                  data={visiblePayrollData}
                   currentMonth={currentMonth}
                   onUpdateEmployee={handleUpdateEmployee}
                 />
@@ -635,18 +645,40 @@ const Dashboard: React.FC = () => {
 
 // Main App component with routing
 const App: React.FC = () => {
+  const { currentUser, loading } = useAuth();
+  const [appLoading, setAppLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate app loading time (you can replace this with actual app initialization)
+    const timer = setTimeout(() => {
+      setAppLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const isLoading = loading || appLoading;
+
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <ThemeProvider>
+      <div className="app min-h-screen bg-background text-foreground">
+        {isLoading ? (
+          <LoadingOverlay message="Loading application..." />
+        ) : (
+          <Routes>
+            <Route path="/login" element={!currentUser ? <Login /> : <Navigate to="/" />} />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        )}
+      </div>
+    </ThemeProvider>
   );
 };
 

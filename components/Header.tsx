@@ -3,8 +3,6 @@ import { YearMonthPicker } from './YearMonthPicker';
 import { PlusIcon } from './icons/PlusIcon';
 import { ExportIcon } from './icons/ExportIcon';
 import { EmployeeStatus } from '../types';
-import { SunIcon } from './icons/SunIcon';
-import { MoonIcon } from './icons/MoonIcon';
 
 interface HeaderProps {
   months: string[];
@@ -15,14 +13,24 @@ interface HeaderProps {
   statusFilter: EmployeeStatus | 'All';
   onStatusFilterChange: (status: EmployeeStatus | 'All') => void;
   activeView: string;
-  theme: 'light' | 'dark';
-  onThemeToggle: () => void;
   searchTerm?: string;
   onSearchChange?: (q: string) => void;
   onExport?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthChange, onAddEmployee, onAddMestri, statusFilter, onStatusFilterChange, activeView, theme, onThemeToggle, searchTerm = '', onSearchChange, onExport }) => {
+export const Header: React.FC<HeaderProps> = ({
+  months,
+  currentMonth,
+  onMonthChange,
+  onAddEmployee,
+  onAddMestri,
+  statusFilter,
+  onStatusFilterChange,
+  activeView,
+  searchTerm = '',
+  onSearchChange,
+  onExport
+}) => {
   // Calculate min/max year/month for picker
   const now = new Date();
   const minYear = now.getFullYear() - 5;
@@ -73,16 +81,18 @@ export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthCha
         <p className="text-slate-600 dark:text-slate-300 text-sm mt-1">{currentViewInfo.subtitle}</p>
       </div>
       <div className="flex items-center gap-2">
-        <select
-          aria-label="Employee status filter"
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value as EmployeeStatus | 'All')}
-          className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-        >
-          <option value="All">All Employees</option>
-          <option value={EmployeeStatus.Active}>Active</option>
-          <option value={EmployeeStatus.Left}>Left</option>
-        </select>
+        {(activeView === 'Payroll' || activeView === 'Employees') && (
+          <select
+            aria-label="Employee status filter"
+            value={statusFilter}
+            onChange={(e) => onStatusFilterChange(e.target.value as EmployeeStatus | 'All')}
+            className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+          >
+            <option value="All">All Employees</option>
+            <option value={EmployeeStatus.Active}>Active</option>
+            <option value={EmployeeStatus.Left}>Left</option>
+          </select>
+        )}
         {activeView === 'Payroll' && (
           <div className="w-full max-w-2xl">
             <YearMonthPicker
@@ -108,19 +118,13 @@ export const Header: React.FC<HeaderProps> = ({ months, currentMonth, onMonthCha
         {activeView === 'Payroll' && (
           <button
             onClick={() => onExport && onExport()}
-            className="p-2 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            className="p-2 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-center"
             aria-label="Export data"
+            title="Export to Excel"
           >
             <ExportIcon className="w-5 h-5" />
           </button>
         )}
-        <button
-          onClick={onThemeToggle}
-          className="p-2 bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Toggle theme"
-        >
-          {theme === 'dark' ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
-        </button>
         {getActionBuutton()}
       </div>
     </header>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee } from '../src/types/firestore';
 import { useAppSelector } from '../redux/hooks';
-import { saveLastEmployee } from '../services/lastEmployeeService';
+import { saveLastEmployee, getLastEmployeesByMonth } from '../services/lastEmployeeService';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -18,12 +18,27 @@ export const ImportFromPresentMonthModal: React.FC<ImportFromPresentMonthModalPr
   currentMonth,
   onImportComplete,
 }) => {
-  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState('');
   const masterEmployees = useAppSelector(state => state.employees.masterList as Employee[]);
+
+  // Check if employee already exists for the month in lastemployees collection
+  const checkIfEmployeeExistsForMonth = async (empId: string, month: string): Promise<{exists: boolean, id?: string}> => {
+    try {
+      const lastEmployees = await getLastEmployeesByMonth(month);
+      const existing = lastEmployees.find(emp => emp.empId === empId);
+      return {
+        exists: !!existing,
+        id: existing?.id
+      };
+    } catch (error) {
+      console.error('Error checking existing employee:', error);
+      return { exists: false };
+    }
+  };
 
   // Generate a list of months including current month and last 5 months
   useEffect(() => {
@@ -52,74 +67,100 @@ export const ImportFromPresentMonthModal: React.FC<ImportFromPresentMonthModalPr
     setSelectedMonth(months[0] || '');
   }, [isOpen]);
 
+  // Reset state when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setImportedCount(0);
+      setIsImporting(false);
+    }
+  }, [isOpen]);
+
   const handleImport = async () => {
     if (!selectedMonth) return;
     
     try {
       setIsImporting(true);
       setImportedCount(0);
-      // Build zeroed lastemployees from current master employees
+      
       if (!masterEmployees || masterEmployees.length === 0) {
         toast.warning('No employees found to import');
         setIsImporting(false);
         return;
       }
 
-      const savePromises = masterEmployees.map(async (emp, index) => {
-        const payload = {
-          name: emp.name,
-          empId: emp.empId,
-          dept: emp.dept || '',
-          phoneNumber: emp.phoneNumber || '',
-          accountNumber: emp.accountNumber || '',
-          ifsc: emp.ifsc || '',
-          bankName: '',
-          bankHolderName: emp.bankHolderName || '',
-          joiningDate: emp.joiningDate || new Date().toISOString().split('T')[0],
-          perDayWage: Number(emp.perDayWage) || 0,
-          employeeStatus: emp.status || 'Active',
-          month: currentMonth,
-          duties: 0,
-          ot: 0,
-          ph: 0,
-          bus: 0,
-          food: 0,
-          eb: 0,
-          shoes: 0,
-          karcha: 0,
-          lastMonth: 0,
-          advance: 0,
-          cash: 0,
-          others: 0,
-          salary: 0,
-          totalSalary: 0,
-          netSalary: 0,
-          deductions: 0,
-          paid: false,
-          status: 'Unpaid',
-          dailyWage: Number(emp.perDayWage) || 0,
-          totalDuties: 0,
-          otWages: 0,
-          balance: 0,
-          mestri: emp.mestriId || '',
-          mestriId: emp.mestriId || '',
-          remarks: '',
-          cashOrAccount: 'Cash',
-          type: 'employee_payroll' as const,
-          year: currentMonth.split('-')[0],
-        };
-        await saveLastEmployee(payload as any);
-        setImportedCount(index + 1);
-      });
+      const year = currentMonth.split('-')[0];
+      let successCount = 0;
+      
+      for (const emp of masterEmployees) {
+        try {
+          // Skip if already exists for this month
+          const existingCheck = await checkIfEmployeeExistsForMonth(emp.empId, currentMonth);
+          if (existingCheck.exists) {
+            console.log(`Skipping ${emp.name} - already exists for ${currentMonth}`);
+            setImportedCount(prev => prev + 1);
+            continue;
+          }
 
-      // Wait for all saves to complete
-      await Promise.all(savePromises);
-      
-      toast.success(`Successfully imported ${masterEmployees.length} employees`);
-      
-      // Only close the modal and call onImportComplete if the component is still mounted
-      onImportComplete();
-      onClose();
+          const payload = {
+            name: emp.name,
+            empId: emp.empId,
+            dept: emp.dept || 'General',
+            phoneNumber: emp.phoneNumber || '',
+            accountNumber: emp.accountNumber || '',
+            ifsc: emp.ifsc || '',
+            bankName: '', // Not in Employee type
+            bankHolderName: emp.bankHolderName || '',
+            joiningDate: emp.joiningDate || new Date().toISOString().split('T')[0],
+            perDayWage: Number(emp.perDayWage) || 0,
+            employeeStatus: emp.status || 'Active',
+            month: currentMonth,
+            year: year,
+            type: 'employee_payroll' as const,
+            // Payroll data
+            duties: 0,
+            ot: 0,
+            ph: 0,
+            bus: 0,
+            food: 0,
+            eb: 0,
+            shoes: 0,
+            karcha: 0,
+            lastMonth: 0,
+            advance: 0,
+            cash: 0,
+            others: 0,
+            salary: 0,
+            totalSalary: 0,
+            netSalary: 0,
+            deductions: 0,
+            paid: false,
+            status: 'Unpaid',
+            // Calculated fields
+            dailyWage: Number(emp.perDayWage) || 0,
+            totalDuties: 0,
+            otWages: 0,
+            balance: 0,
+            // References
+            mestriId: emp.mestriId || '',
+            mestri: '', // Not in Employee type
+            remarks: '',
+            cashOrAccount: 'cash' as const,
+          };
+          await saveLastEmployee(payload);
+          successCount++;
+          setImportedCount(prev => prev + 1);
+        } catch (error: any) {
+          console.error(`Error saving employee ${emp.name}:`, error);
+          toast.error(`Failed to import ${emp.name}: ${error?.message || 'Unknown error'}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully imported ${successCount} employees to ${currentMonth}`);
+        onImportComplete();
+      } else if (masterEmployees.length > 0) {
+        toast.info('All employees already exist for this month');
+      }
     } catch (error) {
       console.error('Error importing payroll data:', error);
       toast.error('Failed to import payroll data. Please try again.');
