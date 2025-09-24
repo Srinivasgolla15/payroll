@@ -1,22 +1,30 @@
 // src/firebase.ts
 import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocs, 
-  query, 
-  where, 
-  Timestamp, 
-  DocumentData, 
-  Query, 
-  QueryDocumentSnapshot 
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  where,
+  Timestamp,
+  DocumentData,
+  Query,
+  QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { getAnalytics } from "firebase/analytics";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User,
+  Auth
+} from 'firebase/auth';
 import {
   Mestri,
   Employee,
@@ -39,6 +47,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 const analytics = typeof window !== "undefined" ? getAnalytics(app) : null;
 
 /* ---------------- Helpers ---------------- */
@@ -403,9 +412,10 @@ export const deletePayroll = async (payrollId: string) => {
 };
 
 // Export the db instance and other utilities
-export { 
-  db, 
+export {
+  db,
   app,
+  auth,
   analytics,
   collection,
   doc,
@@ -419,7 +429,13 @@ export {
   Timestamp,
   type DocumentData,
   type Query,
-  type QueryDocumentSnapshot
+  type QueryDocumentSnapshot,
+  // Firebase Auth exports
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  type User,
+  type Auth
 };
 
 // Re-export types from the types file

@@ -1,11 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { Provider } from 'react-redux';
 import { store } from './redux/store';
 import { ThemeProvider } from './src/contexts/ThemeContext';
+import { AuthProvider } from './contexts/AuthContext';
 import './src/index.css';
-
 // Initialize theme before React renders
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Failed to find the root element');
@@ -36,9 +37,13 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <Provider store={store}>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
     </Provider>
   </React.StrictMode>
 );

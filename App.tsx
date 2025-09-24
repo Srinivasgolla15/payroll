@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Timestamp } from 'firebase/firestore';
 
 import { Sidebar } from './components/Sidebar';
@@ -9,23 +10,25 @@ import { AddEmployeeModal } from './components/AddEmployeeModal';
 import { EmployeesView } from './components/EmployeesView';
 import { MestrisView } from './components/MestrisView';
 import { AddMestriModal } from './components/AddMestriModal';
+import Login from './pages/Login';
 
 import { Employee, Mestri, PaymentMethod, PaymentStatus, EmployeeStatus, PayrollData } from './src/types/firestore';
 
 import { calculatePayroll, exportPayrollToExcel } from './services/payrollService';
 import { useAppSelector, useAppDispatch } from './redux/hooks';
-import { 
-  setActiveMenu, 
-  setAddEmployeeModalOpen, 
-  setAddMestriModalOpen, 
-  setStatusFilter, 
-  toggleTheme 
+import {
+  setActiveMenu,
+  setAddEmployeeModalOpen,
+  setAddMestriModalOpen,
+  setStatusFilter,
+  toggleTheme
 } from './redux/slices/uiSlice';
 import { addEmployeeWithId, fetchEmployees } from './redux/slices/employeesSlice';
 import { createMestri as addMestriWithId, fetchMestris, editMestri as updateMestri } from './redux/slices/mestriSlice';
 import { updateEmployeePayroll, changeMonth, createDefaultPayroll, fetchPayrolls } from './redux/slices/payrollSlice';
 import { LastEmployeeData } from './services/lastEmployeeService';
 import { fetchLastEmployees, selectLastEmployeesByMonth, updateEmployeePayroll as updateLastEmployeePayroll } from './redux/slices/lastEmployeesSlice';
+import { useAuth } from './contexts/AuthContext';
 
 // Helper to check if a month is in the future
 const isFutureMonth = (monthString: string): boolean => {
@@ -67,7 +70,30 @@ type AddEmployeeFormPayload = {
   phoneNumber: string;
 };
 
-const App: React.FC = () => {
+// Protected Route component
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Main Dashboard component (the original App logic)
+const Dashboard: React.FC = () => {
   const dispatch = useAppDispatch();
 
   // Import employees as zeroed payroll for the selected month
@@ -458,6 +484,23 @@ const App: React.FC = () => {
         />
       )}
     </div>
+  );
+};
+
+// Main App component with routing
+const App: React.FC = () => {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 };
 
