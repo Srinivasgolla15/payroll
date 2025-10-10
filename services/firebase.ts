@@ -36,13 +36,13 @@ import {
 
 /* ---------------- Firebase Config ---------------- */
 const firebaseConfig = {
-  apiKey: "AIzaSyCG6nyDgUc7D9GYZPoKjbM7DE-T1t7aXuU",
-  authDomain: "payrollmanagement-6fcee.firebaseapp.com",
-  projectId: "payrollmanagement-6fcee",
-  storageBucket: "payrollmanagement-6fcee.firebasestorage.app",
-  messagingSenderId: "227286370049",
-  appId: "1:227286370049:web:f94f359c6551df2c8bfd00",
-  measurementId: "G-EJDTPL58C7",
+  apiKey: "AIzaSyCaLH0KYO4E7w40NBgdLKGMNtUvzxkTzKE",
+  authDomain: "payroll-a6491.firebaseapp.com",
+  projectId: "payroll-a6491",
+  storageBucket: "payroll-a6491.firebasestorage.app",
+  messagingSenderId: "71771499325",
+  appId: "1:71771499325:web:080426f85139b1b2f6b354",
+  measurementId: "G-9J87DH9H5L"
 };
 
 const app = initializeApp(firebaseConfig);

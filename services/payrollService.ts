@@ -11,7 +11,7 @@ export const calculatePayroll = (data: PayrollData): PayrollData => {
   const perDay = Number(data.perDayWage) || 0;
   const totalDuties = duties + ot;
   const ph = Number((data as any).ph) || 0;
-  const salary = totalDuties * perDay + ph * 497.65;
+  const salary = totalDuties * perDay + ph * 400;
   // const otWages = ot * perDay * OT_MULTIPLIER;
   const totalSalary = salary ;
   // deductions components

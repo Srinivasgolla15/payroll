@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Employee } from '../src/types/firestore';
 import { LastEmployeeData } from '../services/lastEmployeeService';
 import { PAYROLL_COLUMNS } from '../constants';
@@ -9,6 +9,7 @@ import { ManualEmployeeEntryModal } from './ManualEmployeeEntryModal';
 import { useAppSelector, useAppDispatch } from '../redux/hooks';
 import { fetchLastEmployees } from '../redux/slices/lastEmployeesSlice';
 import { LoadingSpinner, LoadingButton, Skeleton } from './ui';
+import { FiEdit2, FiCheck, FiX, FiSave } from 'react-icons/fi';
 
 interface PayrollTableProps {
   data: LastEmployeeData[];
@@ -21,46 +22,54 @@ interface EditingCell {
   key: keyof LastEmployeeData | 'remarks';
 }
 
-export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, onUpdateEmployee }) => {
+export const PayrollTable: React.FC<PayrollTableProps> = ({ 
+  data, 
+  currentMonth, 
+  onUpdateEmployee 
+}) => {
+  // State management
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
+  const [editValue, setEditValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [updatedCell, setUpdatedCell] = useState<EditingCell | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [savedCell, setSavedCell] = useState<EditingCell | null>(null);
+  const [errorCell, setErrorCell] = useState<EditingCell | null>(null);
+  const [selectedCell, setSelectedCell] = useState<{ rowIndex: number; colIndex: number }>({
+    rowIndex: 0,
+    colIndex: 0,
+  });
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, LastEmployeeData>>(new Map());
+
+  // Additional state for modals
   const [editRow, setEditRow] = useState<LastEmployeeData | null>(null);
   const [infoRow, setInfoRow] = useState<LastEmployeeData | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+
+  // Refs
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
+  const tableFocusRef = useRef<HTMLDivElement>(null);
+  const cellRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const isCommittingRef = useRef(false);
+
+  // Redux
+  const dispatch = useAppDispatch();
   const employees = useAppSelector(s => s.employees.masterList);
   const mestris = useAppSelector(s => s.mestri.list);
-  
+
+  // Constants
   const numericKeys = [
-    'duties', 'ot', 'perDayWage', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha', 
-    'lastMonth', 'advance', 'cash', 'others', 'salary', 'totalSalary', 'netSalary', 
+    'duties', 'ot', 'perDayWage', 'ph', 'bus', 'food', 'eb', 'shoes', 'karcha',
+    'lastMonth', 'advance', 'cash', 'others', 'salary', 'totalSalary', 'netSalary',
     'deductions', 'dailyWage', 'totalDuties', 'otWages', 'balance'
   ] as const;
 
-  const handleManualEntryComplete = () => {
-    setShowManualEntryModal(false);
-    // Re-fetch lastemployees for the month so newly added entries appear
-    dispatch(fetchLastEmployees(currentMonth));
-  };
+  const firstEditableColIndex = PAYROLL_COLUMNS.findIndex(c => c.editable);
 
-  const handleInfo = (row: LastEmployeeData) => {
-    setInfoRow(row);
-  };
-
-  const handleEdit = (row: LastEmployeeData) => {
-    setEditRow(row);
-  };
-
-  // Check if there's no data for the current month
-  // Filter data for the current month and ensure we have all required fields
+  // Data processing
   const filteredData = data
     .filter((item) => item.month === currentMonth)
     .map(item => ({
       ...item,
-      // Ensure all required fields have default values
       duties: item.duties || 0,
       ot: item.ot || 0,
       perDayWage: item.perDayWage || 0,
@@ -89,48 +98,93 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
       remarks: item.remarks || ''
     }));
 
-  const hasNoData = filteredData.length === 0;
+  // Initialize selectedCell to first editable column
+  useEffect(() => {
+    setSelectedCell({
+      rowIndex: 0,
+      colIndex: Math.max(0, firstEditableColIndex),
+    });
+  }, [firstEditableColIndex]);
 
-  // Fetch last employees when month changes
-  const dispatch = useAppDispatch();
+  // Focus management
+  useEffect(() => {
+    if (editingCell && inputRef.current) {
+      inputRef.current.focus();
+      if ('select' in inputRef.current) {
+        inputRef.current.select();
+      } else {
+        // Select all text in input for numeric fields
+        const input = inputRef.current as HTMLInputElement;
+        input.select();
+      }
+    }
+  }, [editingCell]);
+
+  // Auto-focus table for keyboard navigation
+  useEffect(() => {
+    if (tableFocusRef.current && !editingCell) {
+      tableFocusRef.current.focus();
+    }
+  }, [editingCell]);
+
+  // Clear success/error indicators
+  useEffect(() => {
+    if (savedCell) {
+      const timer = setTimeout(() => setSavedCell(null), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [savedCell]);
+
+  useEffect(() => {
+    if (errorCell) {
+      const timer = setTimeout(() => setErrorCell(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorCell]);
+
+  // Scroll selected cell into view
+  useEffect(() => {
+    const key = `${selectedCell.rowIndex}:${selectedCell.colIndex}`;
+    const el = cellRefs.current.get(key);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }, [selectedCell]);
+
+  // Keep selection within bounds
+  useEffect(() => {
+    setSelectedCell(prev => {
+      const maxRow = Math.max(0, filteredData.length - 1);
+      const maxCol = Math.max(0, PAYROLL_COLUMNS.length - 1);
+      return {
+        rowIndex: Math.min(prev.rowIndex, maxRow),
+        colIndex: Math.min(prev.colIndex, maxCol),
+      };
+    });
+  }, [filteredData.length]);
+
+  // Fetch employees on month change
   useEffect(() => {
     dispatch(fetchLastEmployees(currentMonth));
   }, [currentMonth, dispatch]);
 
-  // Check if the current month is in the past
-  const now = new Date();
-  const [year, month] = currentMonth.split('-').map(Number);
-  const selectedDate = new Date(year, month - 1);
-  const currentDate = new Date(now.getFullYear(), now.getMonth());
-  const isPastMonth = selectedDate < currentDate;
-
-  console.log(
-    'PayrollTable - Current month:',
-    currentMonth,
-    'Has data:',
-    !hasNoData,
-    'Filtered data length:',
-    filteredData.length,
-    'Is past month:',
-    isPastMonth
-  );
-
-  // Show import button if it's a past month with no data
-  const showImportButton = isPastMonth && hasNoData;
-
+  // Clear optimistic updates when data reflects changes
   useEffect(() => {
-    if (editingCell && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [editingCell]);
+    if (optimisticUpdates.size === 0) return;
+    const next = new Map(optimisticUpdates);
+    let changed = false;
+    filteredData.forEach(row => {
+      const key = String(row.id || row.empId || '');
+      const opt = next.get(key);
+      if (opt && row.updatedAt && opt.updatedAt && row.updatedAt >= opt.updatedAt) {
+        next.delete(key);
+        changed = true;
+      }
+    });
+    if (changed) setOptimisticUpdates(next);
+  }, [filteredData, optimisticUpdates]);
 
-  useEffect(() => {
-    if (updatedCell) {
-      const timer = setTimeout(() => setUpdatedCell(null), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [updatedCell]);
-
+  // Calculations
   const calculateTotals = (data: LastEmployeeData) => {
     const duties = data.duties || 0;
     const ot = data.ot || 0;
@@ -144,7 +198,6 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
     const lastMonth = data.lastMonth || 0;
     const advance = data.advance || 0;
     const others = data.others || 0;
-    const mestriId = data.mestriId || '';
 
     const totalDuties = duties + ot;
     const salary = totalDuties * perDayWage + (ph * 497.65);
@@ -167,82 +220,282 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
     };
   };
 
-  const handleUpdate = async () => {
-    if (!editingCell) return;
-    
-    setIsSaving(true);
-    const { rowIndex, key } = editingCell;
+  // Cell editing functions
+  const startEditing = useCallback((
+    rowIndex: number, 
+    key: keyof LastEmployeeData | 'remarks', 
+    initialChar?: string
+  ) => {
+    if (isCommittingRef.current) return;
+
     const row = filteredData[rowIndex];
-    if (!row) {
-      setIsSaving(false);
-      return;
+    if (!row) return;
+
+    const column = PAYROLL_COLUMNS.find(col => col.key === key);
+    if (!column || !column.editable) return;
+
+    // Reset editValue to handle new input correctly
+    let editValue: string = '';
+    if (initialChar) {
+      if (column.isNumeric && /^[0-9]$/.test(initialChar)) {
+        editValue = initialChar;
+      } else if (!column.isNumeric) {
+        editValue = initialChar;
+      }
+    } else {
+      const currentValue = (row as any)[key];
+      editValue = column.isNumeric && currentValue === 0 ? '' : String(currentValue || '');
     }
 
-    try {
-      // Only parse as number if the key is in numericKeys
-      const isNumeric = numericKeys.includes(key as any);
-      const value = isNumeric ? parseFloat(editValue) || 0 : editValue;
+    setEditingCell({ rowIndex, key });
+    setEditValue(editValue);
+    setSelectedCell({ rowIndex, colIndex: PAYROLL_COLUMNS.findIndex(c => c.key === key) });
+  }, [filteredData]);
 
-      // Create a new object with the updated value
-      const updatedRow = { 
-        ...row, 
+  const cancelEditing = useCallback(() => {
+    setEditingCell(null);
+    setEditValue('');
+  }, []);
+
+  const saveCurrentEdit = useCallback(async (): Promise<boolean> => {
+    if (!editingCell || isCommittingRef.current) return true;
+
+    isCommittingRef.current = true;
+    setIsSaving(true);
+
+    try {
+      const { rowIndex, key } = editingCell;
+      const row = filteredData[rowIndex];
+      if (!row) return false;
+
+      // Process value based on type
+      const isNumeric = numericKeys.includes(key as any);
+      let value: any = isNumeric ? parseFloat(editValue) || 0 : editValue;
+      
+      if (key === 'paid') {
+        value = editValue === 'true' || editValue === 'Paid';
+      }
+
+      // Create updated row
+      const updatedRow = {
+        ...row,
         [key]: value,
         updatedAt: new Date().toISOString()
       } as LastEmployeeData;
 
-      // Recalculate totals if needed
+      // Recalculate totals if numeric field
       if (isNumeric) {
-        setIsSaving(false);
         const totals = calculateTotals(updatedRow);
         Object.assign(updatedRow, totals);
       }
 
-      // If we're updating the mestri field, we need to update the mestriId
+      // Handle mestri field specially
       if (key === 'mestri') {
-        // Resolve mestri by name using mestri slice
-        const m = mestris.find((x: any) => x.name === value || x.mestriId === value || x.id === value);
-        if (m) {
-          updatedRow.mestriId = (m as any).mestriId || (m as any).id || '';
-          (updatedRow as any).mestri = m.name;
+        const mestri = mestris.find((m: any) => 
+          m.name === value || m.mestriId === value || m.id === value
+        );
+        if (mestri) {
+          updatedRow.mestriId = (mestri as any).mestriId || (mestri as any).id || '';
+          (updatedRow as any).mestri = mestri.name;
         }
       }
 
-      // Call the update function with the complete updated row
+      // Save to database
       await onUpdateEmployee(updatedRow);
-      
-      setEditingCell(null);
-      setUpdatedCell(editingCell);
-    } catch (error) {
-      console.error('Error updating employee:', error);
-      // You might want to show an error message to the user here
-    }
-  };
 
-  const handleDoubleClick = (
-    rowIndex: number,
-    key: keyof LastEmployeeData | 'remarks',
-    value: any
-  ) => {
-    const column = PAYROLL_COLUMNS.find((c) => c.key === key);
-    if (column && column.editable) {
-      setEditingCell({ rowIndex, key });
-      setEditValue(
-        column.isNumeric && value === 0 ? '' : String(value || '')
-      );
-    }
-  };
+      // Update optimistic state
+      const rowKey = String(updatedRow.id || updatedRow.empId || `${rowIndex}`);
+      setOptimisticUpdates(prev => {
+        const next = new Map(prev);
+        next.set(rowKey, updatedRow);
+        return next;
+      });
 
-  const handleKeyDown = (
-    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    if (event.key === 'Enter') {
-      handleUpdate();
-    } else if (event.key === 'Escape') {
+      // Show success feedback
+      setSavedCell(editingCell);
       setEditingCell(null);
       setEditValue('');
-    }
-  };
 
+      return true;
+    } catch (error) {
+      console.error('Error saving cell:', error);
+      setErrorCell(editingCell);
+      return false;
+    } finally {
+      setIsSaving(false);
+      isCommittingRef.current = false;
+    }
+  }, [editingCell, editValue, filteredData, onUpdateEmployee, mestris, numericKeys, calculateTotals]);
+
+  // Navigation functions
+  const moveSelection = useCallback((dRow: number, dCol: number) => {
+    setSelectedCell(prev => {
+      const maxRow = Math.max(0, filteredData.length - 1);
+      const maxCol = Math.max(0, PAYROLL_COLUMNS.length - 1);
+      
+      let newRow = Math.max(0, Math.min(prev.rowIndex + dRow, maxRow));
+      let newCol = Math.max(0, Math.min(prev.colIndex + dCol, maxCol));
+
+      // Skip non-editable columns when moving horizontally
+      if (dCol !== 0) {
+        const direction = Math.sign(dCol);
+        while (newCol >= 0 && newCol <= maxCol) {
+          const column = PAYROLL_COLUMNS[newCol];
+          if (column && column.editable) break;
+          newCol += direction;
+        }
+        // If no editable column found, stay at current position
+        if (newCol < 0 || newCol > maxCol) {
+          newCol = prev.colIndex;
+        }
+      }
+
+      return { rowIndex: newRow, colIndex: newCol };
+    });
+  }, [filteredData.length]);
+
+  const saveAndMove = useCallback(async (dRow: number, dCol: number) => {
+    const saved = await saveCurrentEdit();
+    if (saved) {
+      moveSelection(dRow, dCol);
+    }
+  }, [saveCurrentEdit, moveSelection]);
+
+  // Event handlers
+  const handleCellClick = useCallback((
+    rowIndex: number,
+    colKey: keyof LastEmployeeData | 'remarks',
+    e: React.MouseEvent
+  ) => {
+    e.preventDefault();
+    const column = PAYROLL_COLUMNS.find(c => c.key === colKey);
+    if (!column) return;
+
+    const colIndex = PAYROLL_COLUMNS.findIndex(c => c.key === colKey);
+    
+    // If currently editing another cell, save it first
+    if (editingCell && (editingCell.rowIndex !== rowIndex || editingCell.key !== colKey)) {
+      saveCurrentEdit().then(() => {
+        setSelectedCell({ rowIndex, colIndex });
+        if (column.editable) {
+          startEditing(rowIndex, colKey);
+        }
+      });
+      return;
+    }
+
+    setSelectedCell({ rowIndex, colIndex });
+    
+    // Start editing immediately if editable
+    if (column.editable) {
+      startEditing(rowIndex, colKey);
+    }
+  }, [editingCell, saveCurrentEdit, startEditing]);
+
+  const handleInputKeyDown = useCallback((event: React.KeyboardEvent) => {
+    switch (event.key) {
+      case 'Enter':
+        event.preventDefault();
+        saveAndMove(1, 0); // Move down like Excel
+        break;
+      case 'Tab':
+        event.preventDefault();
+        if (event.shiftKey) {
+          saveAndMove(0, -1); // Move left
+        } else {
+          saveAndMove(0, 1); // Move right
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        cancelEditing();
+        if (tableFocusRef.current) {
+          tableFocusRef.current.focus();
+        }
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        saveAndMove(1, 0);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        saveAndMove(-1, 0);
+        break;
+      case 'ArrowLeft':
+        // Only move if cursor is at beginning
+        if ((event.target as HTMLInputElement).selectionStart === 0) {
+          event.preventDefault();
+          saveAndMove(0, -1);
+        }
+        break;
+      case 'ArrowRight':
+        // Only move if cursor is at end
+        const input = event.target as HTMLInputElement;
+        if (input.selectionStart === input.value.length) {
+          event.preventDefault();
+          saveAndMove(0, 1);
+        }
+        break;
+    }
+  }, [saveAndMove, cancelEditing]);
+
+  const handleTableKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (editingCell) return; // Let input handler manage when editing
+
+    const column = PAYROLL_COLUMNS[selectedCell.colIndex];
+    
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        moveSelection(1, 0);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        moveSelection(-1, 0);
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        moveSelection(0, -1);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        moveSelection(0, 1);
+        break;
+      case 'Enter':
+      case 'F2':
+        event.preventDefault();
+        if (column && column.editable) {
+          startEditing(selectedCell.rowIndex, column.key as keyof LastEmployeeData);
+        }
+        break;
+      case 'Delete':
+      case 'Backspace':
+        event.preventDefault();
+        if (column && column.editable) {
+          startEditing(selectedCell.rowIndex, column.key as keyof LastEmployeeData, '');
+        }
+        break;
+      case 'Tab':
+        event.preventDefault();
+        if (event.shiftKey) {
+          moveSelection(0, -1);
+        } else {
+          moveSelection(0, 1);
+        }
+        break;
+      default:
+        // Handle printable characters
+        if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          if (column && column.editable) {
+            event.preventDefault();
+            startEditing(selectedCell.rowIndex, column.key as keyof LastEmployeeData, event.key);
+          }
+        }
+        break;
+    }
+  }, [editingCell, selectedCell, moveSelection, startEditing]);
+
+  // Utility functions
   const getEmployeeName = (empId: string | undefined | null): string => {
     if (!empId) return 'N/A';
     const employee = employees.find((e) => e.id === empId);
@@ -251,8 +504,8 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
 
   const getMestriName = (mestriId: string | undefined | null): string => {
     if (!mestriId) return 'N/A';
-    const m = mestris.find((x: any) => x.mestriId === mestriId || x.id === mestriId);
-    return m?.name || mestriId;
+    const mestri = mestris.find((x: any) => x.mestriId === mestriId || x.id === mestriId);
+    return mestri?.name || mestriId;
   };
 
   const getStatusForEmployee = (emp: LastEmployeeData): string => {
@@ -265,53 +518,21 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
     value: any
   ) => {
     if (value === undefined || value === null) {
-      if (
-        [
-          'duties',
-          'ot',
-          'totalDuties',
-          'bus',
-          'food',
-          'eb',
-          'shoes',
-          'karcha',
-          'lastMonth',
-          'advance',
-          'cash',
-          'perDayWage',
-          'totalSalary',
-          'totalPayment',
-          'balance',
-        ].includes(key)
-      ) {
-        return '0';
-      }
+      const numericFields = [
+        'duties', 'ot', 'totalDuties', 'bus', 'food', 'eb', 'shoes', 'karcha',
+        'lastMonth', 'advance', 'cash', 'perDayWage', 'totalSalary', 'totalPayment', 'balance',
+      ];
+      if (numericFields.includes(key)) return '0';
       if (key === 'remarks') return '';
       return '-';
     }
-    if (
-      [
-        'salary',
-        'otWages',
-        'totalSalary',
-        'netSalary',
-        'balance',
-        'advance',
-        'pf',
-        'esi',
-        'tds',
-        'others',
-        'bonus',
-        'cash',
-        'bus',
-        'food',
-        'eb',
-        'shoes',
-        'karcha',
-        'lastMonth',
-        'perDayWage',
-      ].includes(key)
-    ) {
+
+    const currencyFields = [
+      'salary', 'otWages', 'totalSalary', 'netSalary', 'balance', 'advance', 'pf', 'esi', 'tds',
+      'others', 'bonus', 'cash', 'bus', 'food', 'eb', 'shoes', 'karcha', 'lastMonth', 'perDayWage',
+    ];
+
+    if (currencyFields.includes(key)) {
       const num = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
       return new Intl.NumberFormat('en-IN', {
         style: 'currency',
@@ -319,25 +540,41 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
         minimumFractionDigits: 0,
       }).format(num);
     }
+
     if (key === 'ph') {
       const num = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
       return num.toString();
     }
+
     if (key === 'mestri') {
       if (typeof value === 'object' && value !== null) {
         return (value as any)?.name || (value as any)?.mestriId || '-';
       }
       return String(value || '-');
     }
+
     if (key === 'paid') return value ? 'Paid' : 'Unpaid';
     if (key === 'remarks') return value || '-';
+
     return String(value);
   };
 
-  const handleImportComplete = () => {
-    // Re-fetch lastemployees for the month so imported entries appear
+  // Modal handlers
+  const handleManualEntryComplete = () => {
+    setShowManualEntryModal(false);
     dispatch(fetchLastEmployees(currentMonth));
-    // Close the import modal
+  };
+
+  const handleInfo = (row: LastEmployeeData) => {
+    setInfoRow(row);
+  };
+
+  const handleEdit = (row: LastEmployeeData) => {
+    setEditRow(row);
+  };
+
+  const handleImportComplete = () => {
+    dispatch(fetchLastEmployees(currentMonth));
     setShowImportModal(false);
   };
 
@@ -392,6 +629,107 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
       console.error('Error importing employees:', error);
       alert('Failed to import employees. Please try again.');
     }
+  };
+
+  // Check data availability
+  const hasNoData = filteredData.length === 0;
+  const now = new Date();
+  const [year, month] = currentMonth.split('-').map(Number);
+  const selectedDate = new Date(year, month - 1);
+  const currentDate = new Date(now.getFullYear(), now.getMonth());
+  const isPastMonth = selectedDate < currentDate;
+  const showImportButton = isPastMonth && hasNoData;
+
+  // Render cell content
+  const renderCellContent = (
+    employee: LastEmployeeData,
+    col: any,
+    rowIndex: number,
+    isEditing: boolean
+  ) => {
+    const rowKey = String(employee.id || employee.empId || '');
+    const displayRow = optimisticUpdates.get(rowKey) || employee;
+    const value = (displayRow as any)[col.key] ?? (col.isNumeric ? 0 : col.key === 'remarks' ? '' : '-');
+
+    if (isEditing) {
+      if (col.key === 'paid') {
+        return (
+          <select
+            ref={inputRef as React.RefObject<HTMLSelectElement>}
+            value={editValue === 'true' ? 'true' : 'false'}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={saveCurrentEdit}
+            onKeyDown={handleInputKeyDown}
+            className="w-full bg-transparent text-inherit outline-none border border-cyan-400/60 focus:border-cyan-400 rounded px-2 py-1"
+          >
+            <option value="false">Unpaid</option>
+            <option value="true">Paid</option>
+          </select>
+        );
+      } else if (col.key === 'cashOrAccount') {
+        return (
+          <select
+            ref={inputRef as React.RefObject<HTMLSelectElement>}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={saveCurrentEdit}
+            onKeyDown={handleInputKeyDown}
+            className="w-full bg-transparent text-inherit outline-none border border-cyan-400/60 focus:border-cyan-400 rounded px-2 py-1"
+          >
+            <option value="Cash">Cash</option>
+            <option value="Account">Account</option>
+          </select>
+        );
+      } else if (col.key === 'mestri') {
+        return (
+          <select
+            ref={inputRef as React.RefObject<HTMLSelectElement>}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={saveCurrentEdit}
+            onKeyDown={handleInputKeyDown}
+            className="w-full bg-transparent text-inherit outline-none border border-cyan-400/60 focus:border-cyan-400 rounded px-2 py-1"
+          >
+            <option value="">Select Mestri</option>
+            {mestris.map((mestri: any) => (
+              <option key={mestri.mestriId || mestri.id} value={mestri.name}>
+                {mestri.name}
+              </option>
+            ))}
+          </select>
+        );
+      }
+
+      return (
+        <input
+          ref={inputRef as React.RefObject<HTMLInputElement>}
+          type="text" // Changed to text for better control
+          inputMode={col.isNumeric ? 'decimal' : undefined}
+          value={editValue}
+          onChange={(e) => {
+            if (col.isNumeric) {
+              const newVal = e.target.value;
+              // Allow empty string or valid numeric input (digits and optional decimal)
+              if (newVal === '' || /^\d*\.?\d*$/.test(newVal)) {
+                setEditValue(newVal);
+              }
+            } else {
+              setEditValue(e.target.value);
+            }
+          }}
+          onBlur={saveCurrentEdit}
+          onKeyDown={handleInputKeyDown}
+          className="w-full bg-transparent text-inherit outline-none border border-cyan-400/60 focus:border-cyan-400 rounded px-2 py-1"
+          placeholder={col.isNumeric ? '0' : `Edit ${col.key}`}
+        />
+      );
+    }
+
+    // Display formatted value
+    if (col.key === 'sNo') return rowIndex + 1;
+    if (col.key === 'mestri') return getMestriName(employee.mestriId);
+    if (col.key === 'status') return getStatusForEmployee(employee);
+    return formatValue(col.key as any, value);
   };
 
   return (
@@ -455,7 +793,12 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-white/60 dark:bg-gray-900/50 backdrop-blur-md border border-gray-300 dark:border-cyan-500/20 rounded-xl shadow-lg min-h-[200px]">
+      <div
+        ref={tableFocusRef}
+        tabIndex={0}
+        onKeyDown={handleTableKeyDown}
+        className="overflow-x-auto bg-white/60 dark:bg-gray-900/50 backdrop-blur-md border border-gray-300 dark:border-cyan-500/20 rounded-xl shadow-lg min-h-[200px] focus:outline-none"
+      >
         <table className="w-full min-w-max text-sm text-left text-gray-600 dark:text-gray-300 table-auto">
           <thead className="text-xs text-cyan-800 dark:text-cyan-300 uppercase bg-gray-200/60 dark:bg-gray-800/60 sticky top-0 backdrop-blur-lg">
             <tr>
@@ -483,79 +826,48 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
                 className="bg-white/40 dark:bg-gray-800/40 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 transition-colors duration-200"
               >
                 {PAYROLL_COLUMNS.map((col) => {
+                  const rowKey = String(employee.id || employee.empId || '');
+                  const displayRow = optimisticUpdates.get(rowKey) || employee;
                   const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.key === col.key;
-                  const value = (employee as any)[col.key] ?? (col.isNumeric ? 0 : col.key === 'remarks' ? '' : '-');
+                  const value = (displayRow as any)[col.key] ?? (col.isNumeric ? 0 : col.key === 'remarks' ? '' : '-');
                   const isCalculated = !col.editable;
-                  const isRecentlyUpdated = updatedCell?.rowIndex === rowIndex && updatedCell?.key === col.key;
+                  const isRecentlyUpdated = savedCell?.rowIndex === rowIndex && savedCell?.key === col.key;
+                  const colIndex = PAYROLL_COLUMNS.findIndex(c => c.key === col.key);
+                  const isSelected = selectedCell.rowIndex === rowIndex && selectedCell.colIndex === colIndex;
 
                   return (
                     <td
                       key={`${employee.id || employee.empId || rowIndex}-${String(col.key)}`}
-                      onDoubleClick={() => handleDoubleClick(rowIndex, col.key as keyof LastEmployeeData, value)}
+                      onMouseDown={(e) => handleCellClick(rowIndex, col.key as keyof LastEmployeeData, e)}
+                      ref={(el) => {
+                        const key = `${rowIndex}:${colIndex}`;
+                        if (el) cellRefs.current.set(key, el as HTMLElement);
+                        else cellRefs.current.delete(key);
+                      }}
                       className={`px-4 py-2 border-b border-r border-gray-300/50 dark:border-gray-700/50 whitespace-nowrap transition-all duration-1000 ${
                         col.isNumeric ? 'text-right' : 'text-left'
                       } ${col.editable ? 'cursor-pointer' : ''} ${
                         isCalculated ? 'text-cyan-700 dark:text-cyan-300 font-medium' : ''
-                      } ${isRecentlyUpdated || (updatedCell && isCalculated && updatedCell.rowIndex === rowIndex) ? 'bg-green-500/20 dark:bg-green-500/30' : ''}`}
+                      } ${isRecentlyUpdated || (savedCell && isCalculated && savedCell.rowIndex === rowIndex) ? 'bg-green-500/20 dark:bg-green-500/30' : ''} ${
+                        isSelected
+                          ? 'ring-2 ring-cyan-400 ring-offset-1 ring-offset-white dark:ring-offset-gray-800'
+                          : ''
+                      }`}
                     >
-                      {isEditing ? (
-                        col.key === 'paid' ? (
-                          <select
-                            aria-label="Paid status"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={handleUpdate}
-                            onKeyDown={handleKeyDown}
-                            className="w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white outline-none ring-2 ring-cyan-400 rounded px-1 py-0.5"
-                          >
-                            <option value="unpaid">Unpaid</option>
-                            <option value="paid">Paid</option>
-                          </select>
-                        ) : col.key === 'cashOrAccount' ? (
-                          <select
-                            aria-label="Cash or Account"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={handleUpdate}
-                            onKeyDown={handleKeyDown}
-                            className="w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white outline-none ring-2 ring-cyan-400 rounded px-1 py-0.5"
-                          >
-                            <option value="Cash">Cash</option>
-                            <option value="Account">Account</option>
-                          </select>
-                        ) : (
-                          <input
-                            ref={inputRef}
-                            type={col.isNumeric ? 'number' : 'text'}
-                            value={editValue}
-                            onChange={(e) => {
-                              if (col.isNumeric) {
-                                if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) {
-                                  setEditValue(e.target.value);
-                                }
-                              } else {
-                                setEditValue(e.target.value);
-                              }
-                            }}
-                            onBlur={handleUpdate}
-                            onKeyDown={handleKeyDown}
-                            aria-label={`Edit ${String(col.key)}`}
-                            placeholder={col.isNumeric ? '0' : `Edit ${String(col.key)}`}
-                            className="w-full bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-white outline-none ring-2 ring-cyan-400 rounded px-1 py-0.5"
-                            step={col.isNumeric ? 'any' : undefined}
-                          />
-                        )
-                      ) : (
-                        <span>
-                          {col.key === 'sNo' 
-                            ? rowIndex + 1 
-                            : col.key === 'mestri'
-                              ? getMestriName(employee.mestriId)
-                              : col.key === 'status' 
-                                ? getStatusForEmployee(employee) 
-                                : formatValue(col.key as any, value)}
-                        </span>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          {renderCellContent(employee, col, rowIndex, isEditing)}
+                        </div>
+                        {isSaving && isEditing && (
+                          <FiSave className="ml-2 animate-spin text-cyan-500" size={14} />
+                        )}
+                        {isRecentlyUpdated && (
+                          <FiCheck className="ml-2 text-green-500" size={14} />
+                        )}
+                        {errorCell?.rowIndex === rowIndex && errorCell?.key === col.key && (
+                          <FiX className="ml-2 text-red-500" size={14} />
+                        )}
+                      </div>
                     </td>
                   );
                 })}
@@ -570,7 +882,7 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({ data, currentMonth, 
                   </button>
                   <button
                     className="px-3 py-1 text-xs rounded bg-slate-600 text-white hover:bg-slate-700"
-                    onClick={() => setInfoRow(employee)}
+                    onClick={() => handleInfo(employee)}
                   >
                     Info
                   </button>
