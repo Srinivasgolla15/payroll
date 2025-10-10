@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Employee } from '../src/types/firestore';
 import { LastEmployeeData } from '../services/lastEmployeeService';
 import { PAYROLL_COLUMNS } from '../constants';
@@ -15,6 +15,7 @@ interface PayrollTableProps {
   data: LastEmployeeData[];
   currentMonth: string;
   onUpdateEmployee: (employee: LastEmployeeData) => void;
+  searchTerm?: string;
 }
 
 interface EditingCell {
@@ -25,7 +26,8 @@ interface EditingCell {
 export const PayrollTable: React.FC<PayrollTableProps> = ({ 
   data, 
   currentMonth, 
-  onUpdateEmployee 
+  onUpdateEmployee,
+  searchTerm = ''
 }) => {
   // State management
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -65,38 +67,57 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({
 
   const firstEditableColIndex = PAYROLL_COLUMNS.findIndex(c => c.editable);
 
-  // Data processing
-  const filteredData = data
-    .filter((item) => item.month === currentMonth)
-    .map(item => ({
-      ...item,
-      duties: item.duties || 0,
-      ot: item.ot || 0,
-      perDayWage: item.perDayWage || 0,
-      ph: item.ph || 0,
-      bus: item.bus || 0,
-      food: item.food || 0,
-      eb: item.eb || 0,
-      shoes: item.shoes || 0,
-      karcha: item.karcha || 0,
-      lastMonth: item.lastMonth || 0,
-      advance: item.advance || 0,
-      cash: item.cash || 0,
-      others: item.others || 0,
-      salary: item.salary || 0,
-      totalSalary: item.totalSalary || 0,
-      netSalary: item.netSalary || 0,
-      deductions: item.deductions || 0,
-      paid: item.paid || false,
-      status: item.status || 'Unpaid',
-      dailyWage: item.dailyWage || item.perDayWage || 0,
-      totalDuties: item.totalDuties || ((item.duties || 0) + (item.ot || 0)),
-      otWages: item.otWages || 0,
-      balance: item.balance || 0,
-      mestriId: item.mestriId || '',
-      mestri: item.mestri || '',
-      remarks: item.remarks || ''
-    }));
+  // Data processing with search
+  const filteredData = useMemo(() => {
+    return data
+      .filter((item) => {
+        // First filter by month
+        if (item.month !== currentMonth) return false;
+
+        // Then apply search filter if searchTerm exists
+        if (!searchTerm) return true;
+
+        const search = searchTerm.toLowerCase();
+
+        // Safe string conversion for search fields
+        const name = (item.name?.toString() || '').toLowerCase();
+        const empId = (item.empId?.toString() || '').toLowerCase();
+        const mestri = (item.mestri?.toString() || '').toLowerCase();
+
+        return name.includes(search) ||
+               empId.includes(search) ||
+               mestri.includes(search);
+      })
+      .map(item => ({
+        ...item,
+        duties: item.duties || 0,
+        ot: item.ot || 0,
+        perDayWage: item.perDayWage || 0,
+        ph: item.ph || 0,
+        bus: item.bus || 0,
+        food: item.food || 0,
+        eb: item.eb || 0,
+        shoes: item.shoes || 0,
+        karcha: item.karcha || 0,
+        lastMonth: item.lastMonth || 0,
+        advance: item.advance || 0,
+        cash: item.cash || 0,
+        others: item.others || 0,
+        salary: item.salary || 0,
+        totalSalary: item.totalSalary || 0,
+        netSalary: item.netSalary || 0,
+        deductions: item.deductions || 0,
+        paid: item.paid || false,
+        status: item.status || 'Unpaid',
+        dailyWage: item.dailyWage || item.perDayWage || 0,
+        totalDuties: item.totalDuties || ((item.duties || 0) + (item.ot || 0)),
+        otWages: item.otWages || 0,
+        balance: item.balance || 0,
+        mestriId: item.mestriId || '',
+        mestri: item.mestri || '',
+        remarks: item.remarks || ''
+      }));
+  }, [data, currentMonth, searchTerm]);
 
   // Initialize selectedCell to first editable column
   useEffect(() => {

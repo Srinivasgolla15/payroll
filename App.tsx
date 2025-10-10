@@ -420,10 +420,11 @@ const Dashboard: React.FC = () => {
     if (!payrollSearch) return processedPayrollData;
     const q = payrollSearch.toLowerCase();
     return processedPayrollData.filter((e: any) => {
-      const nameMatch = (e.name || '').toLowerCase().includes(q);
-      const empIdMatch = (e.empId || '').toLowerCase().includes(q);
+      // Safe string conversion for search fields
+      const nameMatch = (e.name?.toString() || '').toLowerCase().includes(q);
+      const empIdMatch = (e.empId?.toString() || '').toLowerCase().includes(q);
       const mestriFromId = getMestriNameById(e.mestriId);
-      const mestriInline = (e.mestri?.name || e.mestri || '').toLowerCase();
+      const mestriInline = (e.mestri?.toString() || '').toLowerCase();
       const mestriMatch = mestriFromId.includes(q) || mestriInline.includes(q);
       return nameMatch || empIdMatch || mestriMatch;
     });
@@ -611,6 +612,7 @@ const Dashboard: React.FC = () => {
                   data={visiblePayrollData}
                   currentMonth={currentMonth}
                   onUpdateEmployee={handleUpdateEmployee}
+                  searchTerm={payrollSearch}
                 />
               </div>
             )}
