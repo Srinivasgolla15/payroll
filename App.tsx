@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Timestamp } from 'firebase/firestore';
 
@@ -96,10 +96,34 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 // Main Dashboard component (the original App logic)
+interface Activity {
+  id: string;
+  message: string;
+  timestamp: Date;
+  type: 'info' | 'success' | 'warning' | 'error';
+}
+
 const Dashboard: React.FC = () => {
   const dispatch = useAppDispatch();
   const [isInitializing, setIsInitializing] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const activitiesEndRef = useRef<HTMLDivElement>(null);
+
+  const addActivity = useCallback((message: string, type: Activity['type'] = 'info') => {
+    const newActivity: Activity = {
+      id: Date.now().toString(),
+      message,
+      timestamp: new Date(),
+      type
+    };
+    setActivities(prev => [newActivity, ...prev].slice(0, 50)); // Keep last 50 activities
+  }, []);
+
+  // Auto-scroll to bottom when new activities are added
+  useEffect(() => {
+    activitiesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activities]);
 
   // Import employees as zeroed payroll for the selected month
   const importZeroedPayrollForMonth = async () => {
@@ -163,17 +187,34 @@ const Dashboard: React.FC = () => {
 
   // ✅ Fetch data on mount
   useEffect(() => {
-    dispatch(fetchMestris());
-    dispatch(fetchEmployees(undefined)); // Fetch all employees
-    dispatch(fetchPayrolls(new Date().toISOString().slice(0, 7)));
-    dispatch(fetchLastEmployees(new Date().toISOString().slice(0, 7)) as any);
+    const init = async () => {
+      try {
+        addActivity('Fetching employees and mestris data...', 'info');
+        await Promise.all([
+          dispatch(fetchMestris()),
+          dispatch(fetchEmployees(undefined)),
+          dispatch(fetchPayrolls(new Date().toISOString().slice(0, 7))),
+          dispatch(fetchLastEmployees(new Date().toISOString().slice(0, 7)) as any)
+        ]);
+        addActivity('Application initialized successfully', 'success');
+      } catch (error) {
+        addActivity('Failed to initialize application data', 'error');
+        console.error('Initialization error:', error);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    
+    init();
   }, [dispatch]);
 
-  // Apply theme class on mount
+  // Apply theme class on mount and log theme change
   useEffect(() => {
     const root = window.document.documentElement;
+    const isDark = root.classList.contains('dark');
     root.classList.remove('dark');
     root.classList.add('light');
+    addActivity(`Theme set to light mode`, 'info');
   }, []);
 
   const handleMonthChange = useCallback((month: string) => {
@@ -570,34 +611,43 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Recent Activity</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                          <div className="flex-1">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              System initialized successfully
+                    <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-6 shadow-lg text-white relative overflow-hidden">
+                      <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-white/10 rounded-full"></div>
+                      <div className="relative z-10">
+                        <h3 className="text-xl font-bold mb-2">Payroll Overview</h3>
+                        <p className="text-blue-100 text-sm mb-6">Current month summary</p>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                          <div className="bg-white/10 p-4 rounded-lg backdrop-blur-sm">
+                            <p className="text-xs text-blue-100 mb-1">Total Payroll</p>
+                            <p className="text-2xl font-bold">
+                              ₹{visiblePayrollData.reduce((sum, emp: any) => sum + (emp.netSalary || 0), 0).toLocaleString('en-IN')}
                             </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                          </div>
+                          <div className="bg-white/10 p-4 rounded-lg backdrop-blur-sm">
+                            <p className="text-xs text-blue-100 mb-1">Active Staff</p>
+                            <p className="text-2xl font-bold">
+                              {filteredMasterEmployees.filter(emp => emp.status === 'active' || emp.status === 'Active').length}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                          <div className="flex-1">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              {filteredMasterEmployees.length} employees loaded
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                        
+                        <div className="pt-4 border-t border-white/20">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm">Payroll Progress</span>
+                            <span className="text-sm font-medium">
+                              {((visiblePayrollData.filter(emp => emp.paid).length / Math.max(1, visiblePayrollData.length)) * 100).toFixed(0)}%
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full mt-2"></div>
-                          <div className="flex-1">
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              {normalizedMestris.length} mestris loaded
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-500">Just now</p>
+                          <div className="w-full bg-white/20 rounded-full h-2">
+                            <div 
+                              className="bg-white h-2 rounded-full" 
+                              style={{ width: `${(visiblePayrollData.filter(emp => emp.paid).length / Math.max(1, visiblePayrollData.length)) * 100}%` }}
+                            ></div>
+                          </div>
+                          <div className="flex justify-between text-xs mt-2 text-blue-100">
+                            <span>{visiblePayrollData.filter(emp => emp.paid).length} Paid</span>
+                            <span>{visiblePayrollData.filter(emp => !emp.paid).length} Pending</span>
                           </div>
                         </div>
                       </div>
