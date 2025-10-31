@@ -32,6 +32,8 @@ import { useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { LoadingOverlay } from './components/ui/LoadingSpinner';
 import { ThemeToggle } from './components/ThemeToggle';
+import { format } from 'date-fns';
+import { formatMonthYear } from './src/utils/dateUtils';
 
 // Helper to check if a month is in the future
 const isFutureMonth = (monthString: string): boolean => {
@@ -176,8 +178,20 @@ const Dashboard: React.FC = () => {
 
   const masterEmployees = useAppSelector(state => state.employees.masterList); // Assume Employee[]
   const mestriList = useAppSelector(state => state.mestri.list);
-  const { currentMonth, payrollDataByMonth } = useAppSelector(state => state.payroll);
+  const { payrollDataByMonth } = useAppSelector(state => state.payroll);
   const [payrollSearch, setPayrollSearch] = React.useState('');
+  
+  // Separate state for payroll view's selected month
+  const [payrollMonth, setPayrollMonth] = React.useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  
+  // Current month for dashboard (always shows current month)
+  const currentMonth = React.useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
 
   // ✅ Normalize mestriList safely
   const normalizedMestris = useMemo(
@@ -218,7 +232,8 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const handleMonthChange = useCallback((month: string) => {
-    dispatch(changeMonth(month));
+    // Only update the payroll month state, not the global currentMonth
+    setPayrollMonth(month);
     dispatch(fetchLastEmployees(month) as any);
   }, [dispatch]);
 
@@ -299,11 +314,16 @@ const Dashboard: React.FC = () => {
     dispatch(setAddMestriModalOpen(false));
   }, [dispatch]);
 
-  const currentPayrollData = payrollDataByMonth[currentMonth] || [];
-  const lastEmployeesForMonth = useAppSelector(state => selectLastEmployeesByMonth(state as any, currentMonth));
+  const currentPayrollData = useMemo(() => {
+    return payrollDataByMonth[payrollMonth] || [];
+  }, [payrollDataByMonth, payrollMonth]);
+  
+  // Ensure we're using the correct month based on the active view
+  const displayMonth = activeMenu === 'Payroll' ? payrollMonth : currentMonth;
+  const lastEmployeesForMonth = useAppSelector(state => selectLastEmployeesByMonth(state as any, displayMonth));
   const processedPayrollData = useMemo(() => {
     const now = new Date();
-    const [year, month] = currentMonth.split('-').map(Number);
+    const [year, month] = displayMonth.split('-').map(Number);
     const selectedDate = new Date(year, month - 1);
     const currentDate = new Date(now.getFullYear(), now.getMonth());
     
@@ -475,20 +495,28 @@ const Dashboard: React.FC = () => {
     return masterEmployees.filter(emp => statusFilter === 'All' || emp.status === statusFilter);
   }, [masterEmployees, statusFilter]);
 
+  // Check if any modal is open
+  const isModalOpen = isAddEmployeeModalOpen || isAddMestriModalOpen;
+
   return (
-    <div className="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen font-inter flex transition-colors duration-300">
-      <Sidebar activeMenu={activeMenu} setActiveMenu={(menu) => dispatch(setActiveMenu(menu))} />
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+    <div className="relative bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen font-inter flex transition-colors duration-300">
+      {/* Sidebar - Always in DOM but visually hidden when modal is open */}
+      <div className={`transition-opacity duration-300 ${isModalOpen ? 'opacity-0' : 'opacity-100'}`}>
+        <Sidebar activeMenu={activeMenu} setActiveMenu={(menu) => dispatch(setActiveMenu(menu))} />
+      </div>
+      
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
         {/* background gradient effects */}
         <div className="absolute inset-0 bg-black opacity-70 z-0 dark:visible invisible"></div>
         <div className="absolute top-0 left-1/4 w-1/2 h-1/2 bg-cyan-500/10 dark:bg-cyan-500/20 rounded-full filter blur-3xl animate-pulse-slow -z-1"></div>
         <div className="absolute bottom-0 right-1/4 w-1/2 h-1/2 bg-blue-500/10 dark:bg-blue-500/20 rounded-full filter blur-3xl animate-pulse-slow delay-2000 -z-1"></div>
         
-        <div className="relative z-10 flex flex-col flex-1 p-4 sm:p-6 lg:p-8 bg-transparent dark:backdrop-blur-sm dark:bg-gray-900/30 overflow-hidden">
+        <div className={`relative z-10 flex flex-col flex-1 p-4 sm:p-6 lg:p-8 bg-transparent dark:backdrop-blur-sm dark:bg-gray-900/30 overflow-hidden transition-opacity duration-300 ${isModalOpen ? 'opacity-30' : 'opacity-100'}`}>
           <Header
             months={Object.keys(payrollDataByMonth).sort().reverse()}
-            currentMonth={currentMonth}
-            onMonthChange={handleMonthChange}
+            currentMonth={activeMenu === 'Payroll' ? payrollMonth : currentMonth}
+            onMonthChange={activeMenu === 'Payroll' ? handleMonthChange : undefined}
             onAddEmployee={() => dispatch(setAddEmployeeModalOpen(true))}
             onAddMestri={() => dispatch(setAddMestriModalOpen(true))}
             statusFilter={statusFilter}
@@ -512,75 +540,137 @@ const Dashboard: React.FC = () => {
                   </div>
 
                   {/* Stats Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {/* Total Employees */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between">
+                    <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 shadow-lg border border-slate-100 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Total Employees</p>
-                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{filteredMasterEmployees.length}</p>
+                          <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Total Employees</p>
+                          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            {filteredMasterEmployees.length}
+                          </p>
                         </div>
-                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center shadow-inner">
+                          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                           </svg>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
+                          <span className="flex h-1.5 w-1.5 mr-1.5 rounded-full bg-blue-500"></span>
+                          <span>Active in the system</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Total Mestris */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between">
+                    <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 shadow-lg border border-slate-100 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Total Mestris</p>
-                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{normalizedMestris.length}</p>
+                          <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Total Mestris</p>
+                          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            {normalizedMestris.length}
+                          </p>
                         </div>
-                        <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        <div className="w-10 h-10 bg-green-50 dark:bg-green-900/20 rounded-lg flex items-center justify-center shadow-inner">
+                          <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                           </svg>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Current Month Payroll */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Current Month</p>
-                          <p className="text-3xl font-bold text-slate-900 dark:text-white">{currentMonth}</p>
-                        </div>
-                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
+                          <span className="flex h-1.5 w-1.5 mr-1.5 rounded-full bg-green-500"></span>
+                          <span>Manages {masterEmployees.length} employees</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Active Status */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between">
+                    <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 shadow-lg border border-slate-100 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">Active Employees</p>
-                          <p className="text-3xl font-bold text-slate-900 dark:text-white">
-                            {filteredMasterEmployees.filter(emp => emp.status === 'active' || emp.status === 'Active').length}
+                          <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Active Employees</p>
+                          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            {masterEmployees.filter(emp => emp.status === 'Active').length}
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-1">/ {masterEmployees.length} total</span>
                           </p>
                         </div>
-                        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <div className="w-10 h-10 bg-green-50 dark:bg-green-900/20 rounded-lg flex items-center justify-center shadow-inner">
+                          <div className="relative">
+                            <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                              <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">{masterEmployees.filter(emp => emp.status === 'Active').length}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
+                          <span className="flex h-1.5 w-1.5 mr-1.5 rounded-full bg-green-500"></span>
+                          <span>{((masterEmployees.filter(emp => emp.status === 'Active').length / masterEmployees.length) * 100).toFixed(0)}% active workforce</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Month Payroll */}
+                    <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 shadow-lg border border-slate-100 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Current Month</p>
+                          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            {formatMonthYear(currentMonth)}
+                          </p>
+                        </div>
+                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center shadow-inner">
+                          <svg className="w-7 h-7 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
+                          <span className="flex h-1.5 w-1.5 mr-1.5 rounded-full bg-blue-500"></span>
+                          <span>Active payroll period</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Total Payroll */}
+                    <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 shadow-lg border border-slate-100 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Total Payroll</p>
+                          <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                            ₹{processedPayrollData.reduce((sum, emp) => sum + (emp.totalSalary || 0), 0).toLocaleString('en-IN')}
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-1">this month</span>
+                          </p>
+                        </div>
+                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center shadow-inner">
+                          <svg className="w-7 h-7 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
+                          <span className="flex h-1.5 w-1.5 mr-1.5 rounded-full bg-blue-500"></span>
+                          <span>{(processedPayrollData.filter(emp => emp.paid).length / processedPayrollData.length * 100).toFixed(0)}% processed</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Quick Actions */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Quick Actions</h3>
-                      <div className="space-y-3">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-lg border border-slate-200 dark:border-slate-700 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <h3 className="text-base font-semibold text-slate-800 dark:text-white mb-3">Quick Actions</h3>
+                      <div className="space-y-2">
                         <button
                           onClick={() => dispatch(setAddEmployeeModalOpen(true))}
                           className="w-full flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
@@ -611,13 +701,13 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-6 shadow-lg text-white relative overflow-hidden">
+                    <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-4 shadow-lg text-white relative overflow-hidden">
                       <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-white/10 rounded-full"></div>
                       <div className="relative z-10">
                         <h3 className="text-xl font-bold mb-2">Payroll Overview</h3>
                         <p className="text-blue-100 text-sm mb-6">Current month summary</p>
                         
-                        <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="grid grid-cols-1 gap-4">
                           <div className="bg-white/10 p-4 rounded-lg backdrop-blur-sm">
                             <p className="text-xs text-blue-100 mb-1">Total Payroll</p>
                             <p className="text-2xl font-bold">
@@ -678,18 +768,28 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </main>
-      {isAddEmployeeModalOpen && (
-        <AddEmployeeModal
-          onClose={() => dispatch(setAddEmployeeModalOpen(false))}
-          onAddEmployee={handleAddEmployee}
-          mestriList={normalizedMestris}
-        />
-      )}
-      {isAddMestriModalOpen && (
-        <AddMestriModal
-          onClose={() => dispatch(setAddMestriModalOpen(false))}
-          onAddMestri={handleAddMestri}
-        />
+
+      {/* Modal Backdrop */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          {isAddEmployeeModalOpen && (
+            <div className="relative z-50 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <AddEmployeeModal
+                onClose={() => dispatch(setAddEmployeeModalOpen(false))}
+                onAddEmployee={handleAddEmployee}
+                mestriList={normalizedMestris}
+              />
+            </div>
+          )}
+          {isAddMestriModalOpen && (
+            <div className="relative z-50 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <AddMestriModal
+                onClose={() => dispatch(setAddMestriModalOpen(false))}
+                onAddMestri={handleAddMestri}
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatMonthYear, formatMonthYearForInput } from '../src/utils/dateUtils';
 
 interface YearMonthPickerProps {
   year: number;
@@ -13,13 +14,29 @@ interface YearMonthPickerProps {
 export const YearMonthPicker: React.FC<YearMonthPickerProps> = ({ year, month, onChange, minYear, maxYear, minMonth, maxMonth }) => {
   const years = [];
   for (let y = minYear; y <= maxYear; y++) years.push(y);
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newYear = parseInt(e.target.value, 10);
+    onChange(newYear, month);
+  };
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const monthIndex = monthNames.indexOf(e.target.value);
+    if (monthIndex !== -1) {
+      onChange(year, monthIndex + 1);
+    }
+  };
 
   return (
     <div className="flex gap-2 items-center">
       <select
         value={year}
-        onChange={e => onChange(Number(e.target.value), month)}
+        onChange={handleYearChange}
         className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
       >
         {years.map(y => (
@@ -27,22 +44,24 @@ export const YearMonthPicker: React.FC<YearMonthPickerProps> = ({ year, month, o
         ))}
       </select>
       <select
-        value={month}
-        onChange={e => onChange(year, Number(e.target.value))}
-        className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+        value={monthNames[month - 1]}
+        onChange={handleMonthChange}
+        className="bg-white dark:bg-slate-700/80 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors min-w-[120px]"
       >
-        {months.map(m => (
-          <option
-            key={m}
-            value={m}
-            disabled={
-              (year === minYear && m < minMonth) ||
-              (year === maxYear && m > maxMonth)
-            }
-          >
-            {new Date(year, m - 1).toLocaleString('default', { month: 'long' })}
-          </option>
-        ))}
+        {monthNames.map((monthName, index) => {
+          const monthNumber = index + 1;
+          const isDisabled = (year === minYear && monthNumber < minMonth) ||
+                           (year === maxYear && monthNumber > maxMonth);
+          return (
+            <option
+              key={monthName}
+              value={monthName}
+              disabled={isDisabled}
+            >
+              {monthName}
+            </option>
+          );
+        })}
       </select>
     </div>
   );

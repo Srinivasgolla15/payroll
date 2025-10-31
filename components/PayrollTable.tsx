@@ -131,12 +131,13 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({
   useEffect(() => {
     if (editingCell && inputRef.current) {
       inputRef.current.focus();
-      if ('select' in inputRef.current) {
-        inputRef.current.select();
-      } else {
-        // Select all text in input for numeric fields
-        const input = inputRef.current as HTMLInputElement;
-        input.select();
+      // Only try to select if the element is an input or textarea
+      if (inputRef.current instanceof HTMLInputElement || inputRef.current instanceof HTMLTextAreaElement) {
+        try {
+          inputRef.current.select();
+        } catch (e) {
+          console.warn('Could not select input content:', e);
+        }
       }
     }
   }, [editingCell]);

@@ -3,6 +3,7 @@ import { YearMonthPicker } from './YearMonthPicker';
 import { PlusIcon } from './icons/PlusIcon';
 import { ExportIcon } from './icons/ExportIcon';
 import { EmployeeStatus } from '../types';
+import { formatMonthYear } from '../src/utils/dateUtils';
 
 interface HeaderProps {
   months: string[];
@@ -45,7 +46,12 @@ export const Header: React.FC<HeaderProps> = ({
     'Settings': { title: 'Settings', subtitle: 'Configure application settings.' },
   };
 
-  const currentViewInfo = titles[activeView] || { title: 'Dashboard', subtitle: '' };
+  const currentViewInfo = {
+    ...(titles[activeView] || { title: 'Dashboard', subtitle: '' }),
+    subtitle: activeView === 'Payroll' 
+      ? `Manage and track employee payroll for ${formatMonthYear(currentMonth)}.`
+      : titles[activeView]?.subtitle || ''
+  };
 
   const getActionBuutton = () => {
     let text: string | null = null;
