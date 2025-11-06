@@ -71,8 +71,10 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({
   const filteredData = useMemo(() => {
     return data
       .filter((item) => {
-        // First filter by month
-        if (item.month !== currentMonth) return false;
+        // First filter by month - normalize both to YYYY-MM format for comparison
+        const itemMonth = item.month ? String(item.month).substring(0, 7) : '';
+        const normalizedCurrentMonth = String(currentMonth).substring(0, 7);
+        if (itemMonth !== normalizedCurrentMonth) return false;
 
         // Then apply search filter if searchTerm exists
         if (!searchTerm) return true;
@@ -655,12 +657,8 @@ export const PayrollTable: React.FC<PayrollTableProps> = ({
 
   // Check data availability
   const hasNoData = filteredData.length === 0;
-  const now = new Date();
-  const [year, month] = currentMonth.split('-').map(Number);
-  const selectedDate = new Date(year, month - 1);
-  const currentDate = new Date(now.getFullYear(), now.getMonth());
-  const isPastMonth = selectedDate < currentDate;
-  const showImportButton = isPastMonth && hasNoData;
+  // Show import button when there's no data for any month (not just past months)
+  const showImportButton = hasNoData;
 
   // Render cell content
   const renderCellContent = (
