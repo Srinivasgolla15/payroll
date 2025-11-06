@@ -24,11 +24,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if npm ci; then
+            echo "Dependencies installed with npm ci"
+          else
+            echo "npm ci failed, trying npm install with legacy peer deps"
+            npm install --legacy-peer-deps
+          fi
       
       - name: Build project
         run: npm run build
@@ -46,7 +52,7 @@ jobs:
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_PAYROLL_A6491 }}'
           channelId: live
           projectId: payroll-a6491
         env:
