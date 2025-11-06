@@ -193,6 +193,9 @@ const Dashboard: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
+  // Ensure we're using the correct month based on the active view
+  const displayMonth = activeMenu === 'Payroll' ? payrollMonth : currentMonth;
+
   // ✅ Normalize mestriList safely
   const normalizedMestris = useMemo(
     () => mestriList.map(mestri => normalizeMestriDates(mestri)),
@@ -222,6 +225,25 @@ const Dashboard: React.FC = () => {
     init();
   }, [dispatch]);
 
+  // Fetch data when displayMonth changes (for past months, fetch from both collections)
+  useEffect(() => {
+    if (activeMenu === 'Payroll') {
+      const now = new Date();
+      const [year, month] = displayMonth.split('-').map(Number);
+      const selectedDate = new Date(year, month - 1);
+      const currentDate = new Date(now.getFullYear(), now.getMonth());
+      
+      // For past months, fetch from both lastemployees and payroll collections
+      if (selectedDate < currentDate) {
+        dispatch(fetchLastEmployees(displayMonth) as any);
+        dispatch(fetchPayrolls(displayMonth) as any);
+      } else {
+        // For current/future months, fetch from payroll collection
+        dispatch(fetchPayrolls(displayMonth) as any);
+      }
+    }
+  }, [displayMonth, activeMenu, dispatch]);
+
   // Apply theme class on mount and log theme change
   useEffect(() => {
     const root = window.document.documentElement;
@@ -241,9 +263,11 @@ const Dashboard: React.FC = () => {
     // Handle both PayrollData and LastEmployeeData types
     const empId = (updatedEmployee as any).empId || (updatedEmployee as any).employeeId;
     const { cashOrAccount, ...employeeData } = updatedEmployee as any;
+    // Use the month from the employee data, or fall back to displayMonth
+    const employeeMonth = (updatedEmployee as any).month || displayMonth;
     // Decide target collection based on month
     const now = new Date();
-    const [y, m] = currentMonth.split('-').map(Number);
+    const [y, m] = employeeMonth.split('-').map(Number);
     const selectedDate = new Date(y, m - 1);
     const currentDate = new Date(now.getFullYear(), now.getMonth());
     const isPastMonth = selectedDate < currentDate;
@@ -253,7 +277,7 @@ const Dashboard: React.FC = () => {
       const id = (updatedEmployee as any).id;
       if (id) {
         const { id: _omitId, ...rest } = employeeData as any;
-        (dispatch as any)(updateLastEmployeePayroll({ id, data: { ...rest, month: currentMonth } }));
+        (dispatch as any)(updateLastEmployeePayroll({ id, data: { ...rest, month: employeeMonth } }));
       }
       return;
     }
@@ -262,7 +286,7 @@ const Dashboard: React.FC = () => {
     const payrollUpdate: Partial<PayrollData> = {
       ...employeeData,
       employeeId: empId,
-      month: currentMonth,
+      month: employeeMonth,
       cashOrAccount: cashOrAccount ?? PaymentMethod.Cash,
     };
 
@@ -274,7 +298,7 @@ const Dashboard: React.FC = () => {
     }
 
     dispatch(updateEmployeePayroll(payrollUpdate));
-  }, [dispatch, currentMonth]);
+  }, [dispatch, displayMonth]);
 
   const handleAddEmployee = useCallback((newEmployeeData: AddEmployeeFormPayload) => {
     console.log('App - handleAddEmployee called with:', newEmployeeData);
@@ -315,11 +339,9 @@ const Dashboard: React.FC = () => {
   }, [dispatch]);
 
   const currentPayrollData = useMemo(() => {
-    return payrollDataByMonth[payrollMonth] || [];
-  }, [payrollDataByMonth, payrollMonth]);
+    return payrollDataByMonth[displayMonth] || [];
+  }, [payrollDataByMonth, displayMonth]);
   
-  // Ensure we're using the correct month based on the active view
-  const displayMonth = activeMenu === 'Payroll' ? payrollMonth : currentMonth;
   const lastEmployeesForMonth = useAppSelector(state => selectLastEmployeesByMonth(state as any, displayMonth));
   const processedPayrollData = useMemo(() => {
     const now = new Date();
@@ -327,19 +349,86 @@ const Dashboard: React.FC = () => {
     const selectedDate = new Date(year, month - 1);
     const currentDate = new Date(now.getFullYear(), now.getMonth());
     
-    console.log('Processing data for month:', currentMonth, 'Data length:', currentPayrollData.length);
+    console.log('Processing data for month:', displayMonth, 'LastEmployees length:', lastEmployeesForMonth.length, 'PayrollData length:', currentPayrollData.length);
     
-    // For past months, only return the data that exists
+    // For past months, merge data from both lastemployees and payroll collections
     if (selectedDate < currentDate) {
-      console.log('Past month detected, returning lastemployees data');
-      const filtered = (lastEmployeesForMonth as any[]).filter(emp =>
+      console.log('Past month detected, merging lastemployees and payroll data');
+      
+      // Convert payroll data to LastEmployeeData format for consistency
+      const payrollAsLastEmployees = currentPayrollData.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        empId: p.empId || p.employeeId,
+        dept: p.dept || '',
+        phoneNumber: p.phoneNumber || '',
+        accountNumber: p.accountNumber || '',
+        ifsc: p.ifsc || '',
+        bankName: p.bankName || '',
+        bankHolderName: p.bankHolderName || '',
+        joiningDate: p.joiningDate || '',
+        perDayWage: p.perDayWage || p.dailyWage || 0,
+        employeeStatus: p.employeeStatus || p.status || 'Active',
+        month: p.month,
+        duties: p.duties || 0,
+        ot: p.ot || 0,
+        ph: p.ph || 0,
+        bus: p.bus || 0,
+        food: p.food || 0,
+        eb: p.eb || 0,
+        shoes: p.shoes || 0,
+        karcha: p.karcha || 0,
+        lastMonth: p.lastMonth || 0,
+        advance: p.advance || 0,
+        cash: p.cash || 0,
+        others: p.others || 0,
+        salary: p.salary || 0,
+        totalSalary: p.totalSalary || 0,
+        netSalary: p.netSalary || 0,
+        deductions: p.deductions || 0,
+        paid: p.paid || false,
+        status: p.status || (p.paid ? 'Paid' : 'Unpaid'),
+        dailyWage: p.dailyWage || p.perDayWage || 0,
+        totalDuties: p.totalDuties || ((p.duties || 0) + (p.ot || 0)),
+        otWages: p.otWages || 0,
+        balance: p.balance || 0,
+        mestriId: p.mestriId || '',
+        mestri: p.mestri?.name || p.mestri || '',
+        remarks: p.remarks || '',
+        cashOrAccount: p.cashOrAccount || 'Cash',
+        type: 'employee_payroll' as const,
+        year: p.month ? p.month.split('-')[0] : '',
+        createdAt: p.createdAt || '',
+        updatedAt: p.updatedAt || ''
+      }));
+      
+      // Merge: lastemployees takes priority (it's the archive), but include payroll data if not in lastemployees
+      const mergedData = new Map<string, any>();
+      
+      // First add all lastemployees data
+      lastEmployeesForMonth.forEach(emp => {
+        const key = emp.empId || emp.id || '';
+        if (key) mergedData.set(key, emp);
+      });
+      
+      // Then add payroll data for employees not in lastemployees
+      payrollAsLastEmployees.forEach(emp => {
+        const key = emp.empId || emp.id || '';
+        if (key && !mergedData.has(key)) {
+          mergedData.set(key, emp);
+        }
+      });
+      
+      const filtered = Array.from(mergedData.values()).filter(emp =>
         statusFilter === 'All' || (emp.status || 'Unpaid') === statusFilter
       );
-      return filtered as any[];
+      
+      console.log('Merged data count:', filtered.length);
+      return filtered;
     }
 
     // For future months: return existing data or zeroed out data
-    if (isFutureMonth(currentMonth)) {
+    if (isFutureMonth(displayMonth)) {
       return masterEmployees
         .filter(emp => statusFilter === 'All' || emp.status === statusFilter)
         .map(emp => {
@@ -354,10 +443,10 @@ const Dashboard: React.FC = () => {
           // Create zeroed out data for new entries
           const zeroedData: PayrollData = {
             // Required fields with defaults
-            id: `${emp.empId}_${currentMonth}`,
+            id: `${emp.empId}_${displayMonth}`,
             employeeId: emp.empId,
             mestriId: emp.mestriId || '',
-            month: currentMonth,
+            month: displayMonth,
             name: emp.name,
             empId: emp.empId,
             dept: emp.dept || '',
@@ -427,7 +516,7 @@ const Dashboard: React.FC = () => {
       
       employeeMap.set(emp.empId, calculatePayroll({
         ...emp,
-        month: currentMonth,
+        month: displayMonth,
         duties: 0,
         ot: 0,
         advance: 0,
@@ -456,7 +545,7 @@ const Dashboard: React.FC = () => {
         paid: false,
         status: emp.status,
         remarks: '',
-        id: `${emp.empId}_${currentMonth}`
+        id: `${emp.empId}_${displayMonth}`
       } as any));
     });
 
@@ -467,7 +556,7 @@ const Dashboard: React.FC = () => {
     });
 
     return Array.from(employeeMap.values());
-  }, [currentPayrollData, statusFilter, masterEmployees, currentMonth, lastEmployeesForMonth]);
+  }, [currentPayrollData, statusFilter, masterEmployees, displayMonth, lastEmployeesForMonth]);
   
   // Resolve mestri name from id for searching
   const getMestriNameById = useCallback((mestriId: string | undefined) => {
@@ -750,7 +839,7 @@ const Dashboard: React.FC = () => {
               <div className="flex-1 overflow-auto pr-2">
                 <PayrollTable
                   data={visiblePayrollData}
-                  currentMonth={currentMonth}
+                  currentMonth={displayMonth}
                   onUpdateEmployee={handleUpdateEmployee}
                   searchTerm={payrollSearch}
                 />
