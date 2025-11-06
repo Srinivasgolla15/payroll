@@ -33,6 +33,15 @@ jobs:
       - name: Build project
         run: npm run build
       
+      - name: Verify build output
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "Error: dist folder not found after build"
+            exit 1
+          fi
+          echo "Build output verified. Files in dist:"
+          ls -la dist/
+      
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -40,4 +49,7 @@ jobs:
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
           channelId: live
           projectId: payroll-a6491
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks
+        continue-on-error: false
 
